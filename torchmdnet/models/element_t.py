@@ -174,8 +174,10 @@ class ElemConv(MessagePassing):
 
     def aggregate(self, inputs, index, dim_size, z_j):
         elem_index = torch.stack([z_j, index])
+        # aggregate neighbors with the same atom type
         elem_index, y = coalesce(elem_index, inputs, m=self.max_z, n=dim_size,
                                  op=self.aggr)
+        # sort indices for later
         idx_sort = elem_index[1].argsort()
         return y[idx_sort], elem_index[:,idx_sort]
 
@@ -216,13 +218,16 @@ class ElemAttn(MessagePassing):
         
         edge_index = knn_graph(x, self.max_z, batch=elem_index[1], loop=True)
         out = self.propagate(edge_index, q=q, k=k, v=v, index=elem_index[1])
-
+        # TODO: evaluate if it is better to switch out projection and atom type aggregation
         out = self.o_proj(out.reshape(bs, -1))
+
+        # aggregate atom types
         out = scatter(out, elem_index[1], dim=0)
         return out
 
     def message(self, q_i, k_j, v_j, index):
         attn = (q_i * k_j).sum(dim=-1)
+        # TODO: evaluate if other activation functions work better here
         attn = softmax(attn, index)
         out = v_j * attn.unsqueeze(2)
         return out
