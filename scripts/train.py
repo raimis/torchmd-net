@@ -63,7 +63,7 @@ def get_args():
     parser.add_argument('--force-weight', default=1.0, type=float, help='Weighting factor for forces in the loss function')
 
     # model architecture
-    parser.add_argument('--model', type=str, default='graph-network', choices=['graph-network', 'transformer'], help='Which model to train')
+    parser.add_argument('--model', type=str, default='graph-network', choices=['graph-network', 'transformer', 'element-transformer'], help='Which model to train')
 
     # architectural args
     parser.add_argument('--embedding-dimension', type=int, default=256, help='Embedding dimension')

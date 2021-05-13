@@ -1,6 +1,7 @@
 from torchmdnet.module import LNNP
 from torchmdnet.models.torchmd_gn import TorchMD_GN
 from torchmdnet.models.torchmd_t import TorchMD_T
+from torchmdnet.models.element_t import ElementTransformer
 from torchmdnet.models.wrappers import (Derivative, Standardize, Reduce,
                                         Atomref, OutputNetwork, AtomFilter)
 
@@ -50,6 +51,11 @@ def create_model(args, atomref=None, mean=None, std=None):
             attn_activation=args.attn_activation,
             num_heads=args.num_heads,
             distance_influence=args.distance_influence,
+            **shared_args
+        )
+    elif args.model == 'element-transformer':
+        model = ElementTransformer(
+            num_filters=args.embedding_dimension,
             **shared_args
         )
     else:

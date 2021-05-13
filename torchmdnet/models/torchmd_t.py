@@ -144,8 +144,6 @@ class MultiHeadAttention(MessagePassing):
         if distance_influence in ['values', 'both']:
             self.dv_proj = nn.Linear(num_rbf, hidden_channels)
 
-        self.reset_parameters()
-
     def reset_parameters(self):
         self.layernorm.reset_parameters()
         nn.init.xavier_uniform_(self.q_proj.weight)
@@ -177,6 +175,7 @@ class MultiHeadAttention(MessagePassing):
         return x + out
 
     def message(self, q_i, k_j, v_j, dk, dv, r_ij):
+        # TODO: separate attention heads
         attn = (q_i * k_j * dk).sum(dim=1)
         attn = self.attn_activation(attn) * self.cutoff(r_ij)
         v_j = v_j * dv

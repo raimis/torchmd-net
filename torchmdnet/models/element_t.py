@@ -1,20 +1,14 @@
+import torch
 from torch import nn
 from torch_geometric.nn import radius_graph, MessagePassing
+from torch_scatter import scatter
+from torch_sparse import coalesce
 from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff,
                                      rbf_class_mapping, act_class_mapping)
 
 
-class TorchMD_GN(nn.Module):
-    r"""The TorchMD Graph Network architecture.
-    Code adapted from https://github.com/rusty1s/pytorch_geometric/blob/d7d8e5e2edada182d820bbb1eec5f016f50db1e0/torch_geometric/nn/models/schnet.py#L38
-
-    .. math::
-        \mathbf{x}^{\prime}_i = \sum_{j \in \mathcal{N}(i)} \mathbf{x}_j \odot
-        h_{\mathbf{\Theta}} ( \exp(-\gamma(\mathbf{e}_{j,i} - \mathbf{\mu}))),
-
-    here :math:`h_{\mathbf{\Theta}}` denotes an MLP and
-    :math:`\mathbf{e}_{j,i}` denotes the interatomic distances between atoms.
-
+class ElementTransformer(nn.Module):
+    r"""
     Args:
         hidden_channels (int, optional): Hidden embedding size.
             (default: :obj:`128`)
@@ -32,6 +26,8 @@ class TorchMD_GN(nn.Module):
             (default: :obj:`"silu"`)
         neighbor_embedding (bool, optional): Whether to perform an initial neighbor
             embedding step. (default: :obj:`True`)
+        num_heads (int, optional): Number of attention heads.
+            (default: :obj:`8`)
         cutoff_lower (float, optional): Lower cutoff distance for interatomic interactions.
             (default: :obj:`0.0`)
         cutoff_upper (float, optional): Upper cutoff distance for interatomic interactions.
@@ -43,8 +39,8 @@ class TorchMD_GN(nn.Module):
     def __init__(self, hidden_channels=128, num_filters=128,
                  num_layers=6, num_rbf=50, rbf_type='expnorm',
                  trainable_rbf=True, activation='silu', neighbor_embedding=True,
-                 cutoff_lower=0.0, cutoff_upper=5.0, max_z=100):
-        super(TorchMD_GN, self).__init__()
+                 num_heads=8, cutoff_lower=0.0, cutoff_upper=5.0, max_z=100):
+        super(ElementTransformer, self).__init__()
 
         assert rbf_type in rbf_class_mapping, (f'Unknown RBF type "{rbf_type}". '
                                                f'Choose from {", ".join(rbf_class_mapping.keys())}.')
@@ -59,6 +55,7 @@ class TorchMD_GN(nn.Module):
         self.trainable_rbf = trainable_rbf
         self.activation = activation
         self.neighbor_embedding = neighbor_embedding
+        self.num_heads = num_heads
         self.cutoff_lower = cutoff_lower
         self.cutoff_upper = cutoff_upper
         self.max_z = max_z
@@ -76,7 +73,7 @@ class TorchMD_GN(nn.Module):
 
         self.interactions = nn.ModuleList()
         for _ in range(num_layers):
-            block = InteractionBlock(hidden_channels, num_rbf, num_filters,
+            block = InteractionBlock(hidden_channels, num_rbf, num_filters, num_heads,
                                      act_class, cutoff_lower, cutoff_upper)
             self.interactions.append(block)
 
@@ -97,7 +94,7 @@ class TorchMD_GN(nn.Module):
             x = self.neighbor_embedding(z, x, edge_index, edge_weight, edge_attr)
 
         for interaction in self.interactions:
-            x = x + interaction(x, edge_index, edge_weight, edge_attr)
+            x = x + interaction(x, z, edge_index, edge_weight, edge_attr)
         
         return x, z, pos, batch
 
@@ -116,57 +113,108 @@ class TorchMD_GN(nn.Module):
 
 
 class InteractionBlock(nn.Module):
-    def __init__(self, hidden_channels, num_rbf, num_filters, activation,
-                 cutoff_lower, cutoff_upper):
+    def __init__(self, hidden_channels, num_rbf, num_filters, num_heads,
+                 activation, cutoff_lower, cutoff_upper):
         super(InteractionBlock, self).__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(num_rbf, num_filters),
-            activation(),
-            nn.Linear(num_filters, num_filters),
-        )
-        self.conv = CFConv(hidden_channels, hidden_channels, num_filters,
-                           self.mlp, cutoff_lower, cutoff_upper)
+
+        self.conv = ElemConv(hidden_channels, num_filters, num_rbf,
+                             activation, cutoff_lower, cutoff_upper)
+        self.attn = ElemAttn(hidden_channels, num_filters, num_heads, activation)
+
         self.act = activation()
         self.lin = nn.Linear(hidden_channels, hidden_channels)
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.mlp[0].weight)
-        self.mlp[0].bias.data.fill_(0)
-        nn.init.xavier_uniform_(self.mlp[2].weight)
-        self.mlp[2].bias.data.fill_(0)
         self.conv.reset_parameters()
         nn.init.xavier_uniform_(self.lin.weight)
         self.lin.bias.data.fill_(0)
 
-    def forward(self, x, edge_index, edge_weight, edge_attr):
-        x = self.conv(x, edge_index, edge_weight, edge_attr)
-        x = self.act(x)
-        x = self.lin(x)
-        return x
+    def forward(self, x, z, edge_index, edge_weight, edge_attr):
+        elem_index, y = self.conv(x, z, edge_index, edge_weight, edge_attr)
+        y = self.attn(y, elem_index)
+
+        y = self.act(y)
+        y = self.lin(y)
+        return y
 
 
-class CFConv(MessagePassing):
-    def __init__(self, in_channels, out_channels, num_filters, filter_net,
-                 cutoff_lower, cutoff_upper):
-        super(CFConv, self).__init__(aggr='add')
+class ElemConv(MessagePassing):
+    def __init__(self, in_channels, num_filters, num_rbf, activation,
+                 cutoff_lower, cutoff_upper, max_z=100):
+        super(ElemConv, self).__init__(aggr='add', node_dim=0)
+        self.max_z = max_z
+
         self.lin1 = nn.Linear(in_channels, num_filters, bias=False)
-        self.lin2 = nn.Linear(num_filters, out_channels)
-        self.filter_net = filter_net
         self.cutoff = CosineCutoff(cutoff_lower, cutoff_upper)
+
+        self.filter_net = nn.Sequential(
+            nn.Linear(num_rbf, num_filters),
+            activation(),
+            nn.Linear(num_filters, num_filters),
+        )
 
     def reset_parameters(self):
         nn.init.xavier_uniform_(self.lin1.weight)
-        nn.init.xavier_uniform_(self.lin2.weight)
-        self.lin2.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.filter_net[0].weight)
+        self.filter_net[0].bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.filter_net[2].weight)
+        self.filter_net[2].bias.data.fill_(0)
 
-    def forward(self, x, edge_index, edge_weight, edge_attr):
+    def forward(self, x, z, edge_index, edge_weight, edge_attr):
         C = self.cutoff(edge_weight)
         W = self.filter_net(edge_attr) * C.view(-1, 1)
 
         x = self.lin1(x)
-        x = self.propagate(edge_index, x=x, W=W)
-        x = self.lin2(x)
-        return x
+        elem_index, y = self.propagate(edge_index, x=x, z=z, W=W)
+        return elem_index, y
 
     def message(self, x_j, W):
         return x_j * W
+
+    def aggregate(self, inputs, index, dim_size, z_j):
+        elem_index = torch.stack([z_j, index])
+        elem_index, y = coalesce(elem_index, inputs, m=self.max_z, n=dim_size,
+                                 op=self.aggr)
+        return elem_index, y
+
+
+class ElemAttn(nn.Module):
+    def __init__(self, out_channels, num_filters, num_heads, activation, bias=True):
+        super(ElemAttn, self).__init__()
+        assert num_filters % num_heads == 0, (f'The number of filters ({num_filters}) '
+                                              f'must be evenly divisible by the number '
+                                              f'of attention heads ({num_heads})')
+        self.bias = bias
+        self.num_heads = num_heads
+
+        self.q_proj = nn.Linear(num_filters, num_filters, bias=bias)
+        self.k_proj = nn.Linear(num_filters, num_filters, bias=bias)
+        self.v_proj = nn.Linear(num_filters, num_filters, bias=bias)
+        self.o_proj = nn.Linear(num_filters, num_filters, bias=bias)
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.q_proj.weight)
+        nn.init.xavier_uniform_(self.k_proj.weight)
+        nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.xavier_uniform_(self.o_proj.weight)
+        if self.bias:
+            self.q_proj.bias.data.fill_(0)
+            self.k_proj.bias.data.fill_(0)
+            self.v_proj.bias.data.fill_(0)
+            self.o_proj.bias.data.fill_(0)
+
+    def forward(self, x, elem_index):
+        bs = x.size(0)
+
+        q = self.q_proj(x).reshape(bs, self.num_heads, -1)
+        k = self.k_proj(x).reshape(bs, self.num_heads, -1)
+        v = self.v_proj(x).reshape(bs, self.num_heads, -1)
+        
+        # maybe how to:
+        # elem_index are sparse matrix indices
+        # --> sparse matrix multiplication of q and k.T
+        # (max_z x n_atoms) @ (n_atoms x max_z) -> (max_z x max_z)
+        # not sure about this
+
+        out = self.o_proj(out)
+        return out
