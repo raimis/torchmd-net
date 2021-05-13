@@ -1,6 +1,7 @@
 import torch
 from torch import nn
-from torch_geometric.nn import radius_graph, MessagePassing
+from torch_geometric.nn import radius_graph, knn_graph, MessagePassing
+from torch_geometric.utils import softmax
 from torch_scatter import scatter
 from torch_sparse import coalesce
 from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff,
@@ -130,7 +131,7 @@ class InteractionBlock(nn.Module):
         self.lin.bias.data.fill_(0)
 
     def forward(self, x, z, edge_index, edge_weight, edge_attr):
-        elem_index, y = self.conv(x, z, edge_index, edge_weight, edge_attr)
+        y, elem_index = self.conv(x, z, edge_index, edge_weight, edge_attr)
         y = self.attn(y, elem_index)
 
         y = self.act(y)
@@ -165,8 +166,8 @@ class ElemConv(MessagePassing):
         W = self.filter_net(edge_attr) * C.view(-1, 1)
 
         x = self.lin1(x)
-        elem_index, y = self.propagate(edge_index, x=x, z=z, W=W)
-        return elem_index, y
+        y, elem_index = self.propagate(edge_index, x=x, z=z, W=W)
+        return y, elem_index
 
     def message(self, x_j, W):
         return x_j * W
@@ -175,17 +176,20 @@ class ElemConv(MessagePassing):
         elem_index = torch.stack([z_j, index])
         elem_index, y = coalesce(elem_index, inputs, m=self.max_z, n=dim_size,
                                  op=self.aggr)
-        return elem_index, y
+        idx_sort = elem_index[1].argsort()
+        return y[idx_sort], elem_index[:,idx_sort]
 
 
-class ElemAttn(nn.Module):
-    def __init__(self, out_channels, num_filters, num_heads, activation, bias=True):
-        super(ElemAttn, self).__init__()
+class ElemAttn(MessagePassing):
+    def __init__(self, out_channels, num_filters, num_heads, activation,
+                 bias=True, max_z=100):
+        super(ElemAttn, self).__init__(aggr='add', node_dim=0)
         assert num_filters % num_heads == 0, (f'The number of filters ({num_filters}) '
                                               f'must be evenly divisible by the number '
                                               f'of attention heads ({num_heads})')
-        self.bias = bias
         self.num_heads = num_heads
+        self.bias = bias
+        self.max_z = max_z
 
         self.q_proj = nn.Linear(num_filters, num_filters, bias=bias)
         self.k_proj = nn.Linear(num_filters, num_filters, bias=bias)
@@ -210,11 +214,15 @@ class ElemAttn(nn.Module):
         k = self.k_proj(x).reshape(bs, self.num_heads, -1)
         v = self.v_proj(x).reshape(bs, self.num_heads, -1)
         
-        # maybe how to:
-        # elem_index are sparse matrix indices
-        # --> sparse matrix multiplication of q and k.T
-        # (max_z x n_atoms) @ (n_atoms x max_z) -> (max_z x max_z)
-        # not sure about this
+        edge_index = knn_graph(x, self.max_z, batch=elem_index[1], loop=True)
+        out = self.propagate(edge_index, q=q, k=k, v=v, index=elem_index[1])
 
-        out = self.o_proj(out)
+        out = self.o_proj(out.reshape(bs, -1))
+        out = scatter(out, elem_index[1], dim=0)
+        return out
+
+    def message(self, q_i, k_j, v_j, index):
+        attn = (q_i * k_j).sum(dim=-1)
+        attn = softmax(attn, index)
+        out = v_j * attn.unsqueeze(2)
         return out
