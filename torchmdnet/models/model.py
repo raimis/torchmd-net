@@ -4,6 +4,7 @@ from pytorch_lightning.utilities import rank_zero_warn
 
 from torchmdnet.models.torchmd_gn import TorchMD_GN
 from torchmdnet.models.torchmd_t import TorchMD_T
+from torchmdnet.models.painn import PaiNN
 from torchmdnet.models.output_modules import OutputNetwork
 from torchmdnet.models.wrappers import AtomFilter
 from torchmdnet import priors
@@ -38,6 +39,17 @@ def create_model(args, prior_model=None, mean=None, std=None):
             num_heads=args['num_heads'],
             distance_influence=args['distance_influence'],
             **shared_args
+        )
+    elif args['model'] == 'painn':
+        model = PaiNN(
+            n_atom_basis=args['embedding_dimension'],
+            n_interactions=args['num_layers'],
+            radial_basis=(args['rbf_type'], args['num_rbf']),
+            cutoff_fn=(args['cutoff_lower'], args['cutoff_upper']),
+            activation=args['activation'],
+            max_z=args['max_z'],
+            shared_interactions=False,
+            shared_filters=False,
         )
     else:
         raise ValueError(f'Unknown architecture: {args["model"]}')
