@@ -103,6 +103,34 @@ class ExpNormalSmearing(nn.Module):
         return self.cutoff_fn(dist) * torch.exp(-self.betas * (torch.exp(-dist + self.cutoff_lower) - self.means) ** 2)
 
 
+class SinusoidSmearing(nn.Module):
+    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True):
+        super(SinusoidSmearing, self).__init__()
+        assert cutoff_lower == 0, 'SinusoidSmearing does not support a lower cutoff > 0.'
+        self.cutoff_lower = cutoff_lower
+        self.cutoff_upper = cutoff_upper
+        self.num_rbf = num_rbf
+        self.trainable = trainable
+
+        offsets = self._initial_params()
+        if trainable:
+            self.register_parameter('offsets', nn.Parameter(offsets))
+        else:
+            self.register_buffer('offsets', offsets)
+
+    def _initial_params(self):
+        offsets = torch.arange(self.num_rbf, dtype=torch.float32) + 1
+        return offsets
+
+    def reset_parameters(self):
+        offsets = self._initial_params()
+        self.offsets.data.copy_(offsets)
+
+    def forward(self, dist, eps=1e-8):
+        dist = dist.unsqueeze(-1)
+        return torch.sin(self.offsets * math.pi / self.cutoff_upper * dist) / (dist + eps)
+
+
 class ShiftedSoftplus(nn.Module):
     def __init__(self):
         super(ShiftedSoftplus, self).__init__()
@@ -134,7 +162,8 @@ class CosineCutoff(nn.Module):
 
 rbf_class_mapping = {
     'gauss': GaussianSmearing,
-    'expnorm': ExpNormalSmearing
+    'expnorm': ExpNormalSmearing,
+    'sinusoid': SinusoidSmearing
 }
 
 act_class_mapping = {

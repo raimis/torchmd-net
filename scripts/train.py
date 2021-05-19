@@ -73,7 +73,7 @@ def get_args():
     parser.add_argument('--num-layers', type=int, default=6, help='Number of interaction layers in the model')
     parser.add_argument('--num-rbf', type=int, default=64, help='Number of radial basis functions in model')
     parser.add_argument('--activation', type=str, default='silu', choices=['silu', 'ssp', 'tanh', 'sigmoid'], help='Activation function')
-    parser.add_argument('--rbf-type', type=str, default='expnorm', choices=['gauss', 'expnorm'], help='Type of distance expansion')
+    parser.add_argument('--rbf-type', type=str, default='expnorm', choices=['gauss', 'expnorm', 'sinusoid'], help='Type of distance expansion')
     parser.add_argument('--trainable-rbf', type=bool, default=False, help='If distance expansion functions should be trainable')
     parser.add_argument('--neighbor-embedding', type=bool, default=False, help='If a neighbor embedding should be applied before interactions')
 
