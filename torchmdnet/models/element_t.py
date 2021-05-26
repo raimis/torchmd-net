@@ -1,10 +1,8 @@
 import torch
 from torch import nn
 from torch_geometric.nn import radius_graph, knn_graph, MessagePassing
-from torch_geometric.utils import softmax
 from torch_scatter import scatter
-from torch_sparse import coalesce
-from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff,
+from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff, Distance,
                                      rbf_class_mapping, act_class_mapping)
 
 
@@ -65,6 +63,7 @@ class ElementTransformer(nn.Module):
 
         self.embedding = nn.Embedding(self.max_z, hidden_channels)
 
+        self.distance = Distance(cutoff_lower, cutoff_upper)
         self.distance_expansion = rbf_class_mapping[rbf_type](
             cutoff_lower, cutoff_upper, num_rbf, trainable_rbf
         )
@@ -86,9 +85,7 @@ class ElementTransformer(nn.Module):
     def forward(self, z, pos, batch=None):
         x = self.embedding(z)
 
-        edge_index = radius_graph(pos, r=self.cutoff_upper, batch=batch)
-        row, col = edge_index
-        edge_weight = (pos[row] - pos[col]).norm(dim=-1)
+        edge_index, edge_weight = self.distance(pos, batch)
         edge_attr = self.distance_expansion(edge_weight)
 
         if self.neighbor_embedding:
@@ -122,20 +119,13 @@ class InteractionBlock(nn.Module):
                              activation, cutoff_lower, cutoff_upper)
         self.attn = ElemAttn(hidden_channels, num_filters, num_heads, activation)
 
-        self.act = activation()
-        self.lin = nn.Linear(hidden_channels, hidden_channels)
-
     def reset_parameters(self):
         self.conv.reset_parameters()
-        nn.init.xavier_uniform_(self.lin.weight)
-        self.lin.bias.data.fill_(0)
+        self.attn.reset_parameters()
 
     def forward(self, x, z, edge_index, edge_weight, edge_attr):
         y, elem_index = self.conv(x, z, edge_index, edge_weight, edge_attr)
         y = self.attn(y, elem_index)
-
-        y = self.act(y)
-        y = self.lin(y)
         return y
 
 
@@ -174,60 +164,70 @@ class ElemConv(MessagePassing):
 
     def aggregate(self, inputs, index, dim_size, z_j):
         elem_index = torch.stack([z_j, index])
-        # aggregate neighbors with the same atom type
-        elem_index, y = coalesce(elem_index, inputs, m=self.max_z, n=dim_size,
-                                 op=self.aggr)
+
+        # aggregate atoms of each element
+        elem_index, unique_indices = elem_index.unique(return_inverse=True, dim=1)
+        y = scatter(inputs, unique_indices, dim=0)
+
         # sort indices for later
         idx_sort = elem_index[1].argsort()
         return y[idx_sort], elem_index[:,idx_sort]
 
 
-class ElemAttn(MessagePassing):
+class ElemAttn(nn.Module):
     def __init__(self, out_channels, num_filters, num_heads, activation,
-                 bias=True, max_z=100):
-        super(ElemAttn, self).__init__(aggr='add', node_dim=0)
+                 bias=True):
+        super(ElemAttn, self).__init__()
         assert num_filters % num_heads == 0, (f'The number of filters ({num_filters}) '
                                               f'must be evenly divisible by the number '
                                               f'of attention heads ({num_heads})')
         self.num_heads = num_heads
         self.bias = bias
-        self.max_z = max_z
 
         self.q_proj = nn.Linear(num_filters, num_filters, bias=bias)
         self.k_proj = nn.Linear(num_filters, num_filters, bias=bias)
         self.v_proj = nn.Linear(num_filters, num_filters, bias=bias)
-        self.o_proj = nn.Linear(num_filters, num_filters, bias=bias)
+        self.o_proj1 = nn.Linear(num_filters, num_filters, bias=bias)
+        self.o_proj2 = nn.Linear(num_filters, num_filters, bias=bias)
+        self.act = activation()
 
     def reset_parameters(self):
         nn.init.xavier_uniform_(self.q_proj.weight)
         nn.init.xavier_uniform_(self.k_proj.weight)
         nn.init.xavier_uniform_(self.v_proj.weight)
-        nn.init.xavier_uniform_(self.o_proj.weight)
+        nn.init.xavier_uniform_(self.o_proj1.weight)
+        nn.init.xavier_uniform_(self.o_proj2.weight)
         if self.bias:
             self.q_proj.bias.data.fill_(0)
             self.k_proj.bias.data.fill_(0)
             self.v_proj.bias.data.fill_(0)
-            self.o_proj.bias.data.fill_(0)
+            self.o_proj1.bias.data.fill_(0)
+            self.o_proj2.bias.data.fill_(0)
 
     def forward(self, x, elem_index):
         bs = x.size(0)
 
-        q = self.q_proj(x).reshape(bs, self.num_heads, -1)
-        k = self.k_proj(x).reshape(bs, self.num_heads, -1)
-        v = self.v_proj(x).reshape(bs, self.num_heads, -1)
-        
-        edge_index = knn_graph(x, self.max_z, batch=elem_index[1], loop=True)
-        out = self.propagate(edge_index, q=q, k=k, v=v, index=elem_index[1])
-        # TODO: evaluate if it is better to switch out projection and atom type aggregation
-        out = self.o_proj(out.reshape(bs, -1))
+        q = self.q_proj(x).reshape(bs, self.num_heads, -1).transpose(0, 1)
+        k = self.k_proj(x).reshape(bs, self.num_heads, -1).transpose(0, 1)
+        v = self.v_proj(x).reshape(bs, self.num_heads, -1).transpose(0, 1)
+
+        out = elementwise_attention(q, k, v, elem_index[1]).transpose(0, 1)
+        out = self.o_proj1(out.reshape(bs, -1))
+        # TODO: activation here?
 
         # aggregate atom types
         out = scatter(out, elem_index[1], dim=0)
-        return out
+        out = self.o_proj2(out)
+        return self.act(out)
 
-    def message(self, q_i, k_j, v_j, index):
-        attn = (q_i * k_j).sum(dim=-1)
-        # TODO: evaluate if other activation functions work better here
-        attn = softmax(attn, index)
-        out = v_j * attn.unsqueeze(2)
-        return out
+
+@torch.jit.script
+def elementwise_attention(q, k, v, index):
+    result = torch.empty_like(q)
+    # TODO: for loop is very slow
+    for i in torch.unique(index):
+        mask = index == i
+        attn = torch.matmul(q[:,mask], k[:,mask].transpose(1, 2))
+        attn = attn.softmax(dim=-1)
+        result[:,mask] = torch.matmul(attn, v[:,mask])
+    return result
