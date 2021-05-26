@@ -229,7 +229,7 @@ class ElemAttn(nn.Module):
         # Mask out attention weights outside of the molecule. This way of creating
         # the block diagonal matrix is not also ideal
         counts = elem_index[1].unique(return_counts=True)[1]
-        blocks = torch.block_diag(*[torch.ones(n, n) for n in counts])
+        blocks = torch.block_diag(*[torch.ones(n, n, device=attn.device) for n in counts])
         attn = attn * blocks
 
         # weight values by attention weights
