@@ -1,6 +1,6 @@
 from torch import nn
-from torch_geometric.nn import radius_graph, MessagePassing
-from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff,
+from torch_geometric.nn import MessagePassing
+from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff, Distance,
                                      rbf_class_mapping, act_class_mapping)
 
 
@@ -67,6 +67,7 @@ class TorchMD_GN(nn.Module):
 
         self.embedding = nn.Embedding(self.max_z, hidden_channels)
 
+        self.distance = Distance(cutoff_lower, cutoff_upper)
         self.distance_expansion = rbf_class_mapping[rbf_type](
             cutoff_lower, cutoff_upper, num_rbf, trainable_rbf
         )
@@ -84,15 +85,16 @@ class TorchMD_GN(nn.Module):
 
     def reset_parameters(self):
         self.embedding.reset_parameters()
+        self.distance_expansion.reset_parameters()
+        if self.neighbor_embedding is not None:
+            self.neighbor_embedding.reset_parameters()
         for interaction in self.interactions:
             interaction.reset_parameters()
 
     def forward(self, z, pos, batch=None):
         x = self.embedding(z)
 
-        edge_index = radius_graph(pos, r=self.cutoff_upper, batch=batch)
-        row, col = edge_index
-        edge_weight = (pos[row] - pos[col]).norm(dim=-1)
+        edge_index, edge_weight = self.distance(pos, batch)
         edge_attr = self.distance_expansion(edge_weight)
 
         if self.neighbor_embedding:
@@ -100,7 +102,7 @@ class TorchMD_GN(nn.Module):
 
         for interaction in self.interactions:
             x = x + interaction(x, edge_index, edge_weight, edge_attr)
-        
+
         return x, z, pos, batch
 
     def __repr__(self):

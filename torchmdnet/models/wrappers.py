@@ -1,11 +1,5 @@
-import ase
 from abc import abstractmethod, ABCMeta
-from torch_scatter import scatter
-from torchmdnet.models.utils import act_class_mapping
-
-import torch
 from torch import nn
-from torch.autograd import grad
 
 
 class BaseWrapper(nn.Module, metaclass=ABCMeta):
@@ -27,105 +21,6 @@ class BaseWrapper(nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def forward(self, z, pos, batch=None):
         return
-    
-
-class Derivative(BaseWrapper):
-    def forward(self, z, pos, batch=None):
-        pos.requires_grad_(True)
-        out = self.model(z, pos, batch=batch)
-        dy = -grad(out, pos, grad_outputs=torch.ones_like(out),
-                   create_graph=True, retain_graph=True)[0]
-        return out, dy
-
-
-class Standardize(BaseWrapper):
-    def __init__(self, model, mean, std):
-        super(Standardize, self).__init__(model)
-        self.register_buffer('mean', mean)
-        self.register_buffer('std', std)
-
-    def forward(self, z, pos, batch=None):
-        out = self.model(z, pos, batch=batch)
-        if self.std is not None:
-            out = out * self.std
-        if self.mean is not None:
-            out = out + self.mean
-        return out
-
-
-class Reduce(BaseWrapper):
-    def __init__(self, model, reduce_op='add', dipole=False):
-        super(Reduce, self).__init__(model)
-        self.reduce_op = reduce_op
-        self.dipole = dipole
-
-        atomic_mass = torch.from_numpy(ase.data.atomic_masses).float()
-        self.register_buffer('atomic_mass', atomic_mass)
-
-    def forward(self, z, pos, batch=None):
-        x, z, pos, batch = self.model(z, pos, batch=batch)
-
-        if self.dipole:
-            # Get center of mass.
-            mass = self.atomic_mass[z].view(-1, 1)
-            c = scatter(mass * pos, batch, dim=0) / scatter(mass, batch, dim=0)
-            x = x * (pos - c[batch])
-
-        # aggregate atoms
-        out = scatter(x, batch, dim=0, reduce=self.reduce_op)
-
-        if self.dipole:
-            out = torch.norm(out, dim=-1, keepdim=True)
-        return out
-
-
-class Atomref(BaseWrapper):
-    def __init__(self, model, atomref, max_z):
-        super(Atomref, self).__init__(model)
-        self.register_buffer('initial_atomref', atomref)
-        self.atomref = nn.Embedding(max_z, 1)
-        self.atomref.weight.data.copy_(atomref)
-
-    def reset_parameters(self):
-        super(Atomref, self).reset_parameters()
-        self.atomref.weight.data.copy_(self.initial_atomref)
-
-    def forward(self, z, pos, batch=None):
-        x, z, pos, batch = self.model(z, pos, batch=batch)
-        x = x + self.atomref(z)
-        return x, z, pos, batch
-
-
-class OutputNetwork(BaseWrapper):
-    def __init__(self, model, hidden_channels, activation='silu'):
-        super(OutputNetwork, self).__init__(model)
-        self.hidden_channels = hidden_channels
-        self.activation = activation
-
-        act_class = act_class_mapping[activation]
-
-        self.output_network = nn.Sequential(
-            nn.Linear(hidden_channels, hidden_channels // 2),
-            act_class(),
-            nn.Linear(hidden_channels // 2, 1)
-        )
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        super(OutputNetwork, self).reset_parameters()
-        nn.init.xavier_uniform_(self.output_network[0].weight)
-        self.output_network[0].bias.data.fill_(0)
-        nn.init.xavier_uniform_(self.output_network[2].weight)
-        self.output_network[2].bias.data.fill_(0)
-
-    def forward(self, z, pos, batch=None):
-        assert z.dim() == 1 and z.dtype == torch.long
-        batch = torch.zeros_like(z) if batch is None else batch
-
-        x, z, pos, batch = self.model(z, pos, batch=batch)
-        x = self.output_network(x)
-        return x, z, pos, batch
 
 
 class AtomFilter(BaseWrapper):
@@ -144,7 +39,7 @@ class AtomFilter(BaseWrapper):
         z = z[atom_mask]
         pos = pos[atom_mask]
         batch = batch[atom_mask]
-        
+
         assert len(batch.unique()) == n_samples,\
             ('Some samples were completely filtered out by the atom filter. '
              f'Make sure that at least one atom per sample exists with Z > {self.remove_threshold}.')
