@@ -43,6 +43,7 @@ def create_model(args, prior_model=None, mean=None, std=None):
     elif args.model == 'element-transformer':
         model = ElementTransformer(
             num_filters=args.embedding_dimension,
+            attn_activation=args['attn_activation'],
             num_heads=args.num_heads,
             **shared_args
         )

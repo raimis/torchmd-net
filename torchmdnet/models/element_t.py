@@ -23,6 +23,8 @@ class ElementTransformer(nn.Module):
             backpropagation. (default: :obj:`True`)
         activation (string, optional): The type of activation function to use.
             (default: :obj:`"silu"`)
+        attn_activation (string, optional): The type of activation function to use
+            inside the attention mechanism. (default: :obj:`"silu"`)
         neighbor_embedding (bool, optional): Whether to perform an initial neighbor
             embedding step. (default: :obj:`True`)
         num_heads (int, optional): Number of attention heads.
@@ -37,7 +39,7 @@ class ElementTransformer(nn.Module):
 
     def __init__(self, hidden_channels=128, num_filters=128,
                  num_layers=6, num_rbf=50, rbf_type='expnorm',
-                 trainable_rbf=True, activation='silu', neighbor_embedding=True,
+                 trainable_rbf=True, activation='silu', attn_activation='silu', neighbor_embedding=True,
                  num_heads=8, cutoff_lower=0.0, cutoff_upper=5.0, max_z=100):
         super(ElementTransformer, self).__init__()
 
@@ -53,6 +55,7 @@ class ElementTransformer(nn.Module):
         self.rbf_type = rbf_type
         self.trainable_rbf = trainable_rbf
         self.activation = activation
+        self.attn_activation = attn_activation
         self.neighbor_embedding = neighbor_embedding
         self.num_heads = num_heads
         self.cutoff_lower = cutoff_lower
@@ -60,6 +63,7 @@ class ElementTransformer(nn.Module):
         self.max_z = max_z
 
         act_class = act_class_mapping[activation]
+        attn_act_class = act_class_mapping[attn_activation]
 
         self.embedding = nn.Embedding(self.max_z, hidden_channels)
 
@@ -74,7 +78,7 @@ class ElementTransformer(nn.Module):
         self.interactions = nn.ModuleList()
         for _ in range(num_layers):
             block = InteractionBlock(hidden_channels, num_rbf, num_filters, num_heads,
-                                     act_class, cutoff_lower, cutoff_upper)
+                                     act_class, attn_act_class, cutoff_lower, cutoff_upper)
             self.interactions.append(block)
 
     def reset_parameters(self):
@@ -112,12 +116,13 @@ class ElementTransformer(nn.Module):
 
 class InteractionBlock(nn.Module):
     def __init__(self, hidden_channels, num_rbf, num_filters, num_heads,
-                 activation, cutoff_lower, cutoff_upper):
+                 activation, attn_activation, cutoff_lower, cutoff_upper):
         super(InteractionBlock, self).__init__()
 
         self.conv = ElemConv(hidden_channels, num_filters, num_rbf,
                              activation, cutoff_lower, cutoff_upper)
-        self.attn = ElemAttn(hidden_channels, num_filters, num_heads, activation)
+        self.attn = ElemAttn(hidden_channels, num_filters, num_heads,
+                             activation, attn_activation)
 
     def reset_parameters(self):
         self.conv.reset_parameters()
@@ -176,7 +181,7 @@ class ElemConv(MessagePassing):
 
 class ElemAttn(nn.Module):
     def __init__(self, out_channels, num_filters, num_heads, activation,
-                 bias=True):
+                 attn_activation, bias=True):
         super(ElemAttn, self).__init__()
         assert num_filters % num_heads == 0, (f'The number of filters ({num_filters}) '
                                               f'must be evenly divisible by the number '
@@ -189,7 +194,9 @@ class ElemAttn(nn.Module):
         self.v_proj = nn.Linear(num_filters, num_filters, bias=bias)
         self.o_proj1 = nn.Linear(num_filters, num_filters, bias=bias)
         self.o_proj2 = nn.Linear(num_filters, num_filters, bias=bias)
+        
         self.act = activation()
+        self.attn_act = activation()
 
     def reset_parameters(self):
         nn.init.xavier_uniform_(self.q_proj.weight)
@@ -211,7 +218,26 @@ class ElemAttn(nn.Module):
         k = self.k_proj(x).reshape(bs, self.num_heads, -1).transpose(0, 1)
         v = self.v_proj(x).reshape(bs, self.num_heads, -1).transpose(0, 1)
 
-        out = elementwise_attention(q, k, v, elem_index[1]).transpose(0, 1)
+        # This computes way more than it should. Ideally, attention weights should only
+        # be calculated inside each molecule (i.e. inside elem_index[1]). Currently, attention
+        # weights are computed for each pair of atoms in the whole batch. Maybe a sparse matrix
+        # multiplication would work here. Otherwise, this operation resembles "scatter_matmul",
+        # which does not exist
+        attn = torch.matmul(q, k.transpose(1, 2))
+        attn = self.attn_act(attn)
+
+        # Mask out attention weights outside of the molecule. This way of creating
+        # the block diagonal matrix is not also ideal
+        counts = elem_index[1].unique(return_counts=True)[1]
+        blocks = torch.block_diag(*[torch.ones(n, n) for n in counts])
+        attn = attn * blocks
+
+        # weight values by attention weights
+        out = torch.matmul(attn, v)
+
+        # slow way of computing attention weights sequentially for each molecule:
+        # out = elementwise_attention(q, k, v, elem_index[1]).transpose(0, 1)
+
         out = self.o_proj1(out.reshape(bs, -1))
         # TODO: activation here?
 
@@ -223,8 +249,9 @@ class ElemAttn(nn.Module):
 
 @torch.jit.script
 def elementwise_attention(q, k, v, index):
+    # this function might be quick when implemented as a CUDA kernel,
+    # currently it is very slow due looping over each molecule in the batch
     result = torch.empty_like(q)
-    # TODO: for loop is very slow
     for i in torch.unique(index):
         mask = index == i
         attn = torch.matmul(q[:,mask], k[:,mask].transpose(1, 2))
