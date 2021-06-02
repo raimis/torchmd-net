@@ -8,8 +8,8 @@ import torch.nn.functional as F
 import schnetpack.structure as structure
 import schnetpack.nn as snn
 
-from torchmdnet.models.utils import CosineCutoff
-from torchmdnet.models.utils import act_class_mapping, rbf_class_mapping
+from torchmdnet.models.utils import (CosineCutoff, Distance,
+                                     act_class_mapping, rbf_class_mapping)
 
 from torch_geometric.nn import radius_graph
 
@@ -50,6 +50,7 @@ class PaiNN(nn.Module):
         
         activation = act_class_mapping[activation]()
 
+        self.distance = Distance(cutoff_fn[0], cutoff_fn[1], return_vec=True)
         self.embedding = nn.Embedding(max_z, n_atom_basis, padding_idx=0)
 
         self.share_filters = shared_filters
@@ -104,12 +105,11 @@ class PaiNN(nn.Module):
         # get tensors from input dictionary
         n_atoms = z.shape[0]
 
-        edge_index = radius_graph(pos, r=self.cutoff_upper, batch=batch)
+        edge_index, d_ij, r_ij = self.distance(pos, batch)
         idx_i, idx_j = edge_index
-        r_ij = (pos[idx_i] - pos[idx_j])
+        d_ij = d_ij.unsqueeze(1)
 
         # compute atom and pair features
-        d_ij = torch.norm(r_ij, dim=1, keepdim=True)
         dir_ij = r_ij / d_ij
         phi_ij = self.radial_basis(d_ij)
         fcut = self.cutoff_fn(d_ij)

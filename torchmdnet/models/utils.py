@@ -103,32 +103,42 @@ class ExpNormalSmearing(nn.Module):
         return self.cutoff_fn(dist) * torch.exp(-self.betas * (torch.exp(-dist + self.cutoff_lower) - self.means) ** 2)
 
 
-class SinusoidSmearing(nn.Module):
+class BesselSmearing(nn.Module):
+    """
+    Implementation adapted from PaiNN
+
+    Sine for radial basis expansion with coulomb decay. (0th order Bessel from DimeNet)
+    """
+
     def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True):
-        super(SinusoidSmearing, self).__init__()
-        assert cutoff_lower == 0, 'SinusoidSmearing does not support a lower cutoff > 0.'
+        """
+        Args:
+            cutoff_upper: radial cutoff
+            num_rbf: number of basis functions.
+        """
+        super(BesselSmearing, self).__init__()
+        assert cutoff_lower == 0, 'Lower cutoff not implemented for Bessel RBF'
+
         self.cutoff_lower = cutoff_lower
         self.cutoff_upper = cutoff_upper
         self.num_rbf = num_rbf
         self.trainable = trainable
 
-        offsets = self._initial_params()
+        # compute offset and width of Gaussian functions
+        freqs = torch.arange(1, num_rbf + 1) * math.pi / cutoff_upper
         if trainable:
-            self.register_parameter('offsets', nn.Parameter(offsets))
+            self.register_parameter('freqs', nn.Parameter(freqs))
         else:
-            self.register_buffer('offsets', offsets)
+            self.register_buffer('freqs', freqs)
 
-    def _initial_params(self):
-        offsets = torch.arange(self.num_rbf, dtype=torch.float32) + 1
-        return offsets
+    def forward(self, inputs):
+        ax = inputs.unsqueeze(-1) * self.freqs
+        sinax = torch.sin(ax)
 
-    def reset_parameters(self):
-        offsets = self._initial_params()
-        self.offsets.data.copy_(offsets)
+        norm = torch.where(inputs == 0, torch.tensor(1.0, device=inputs.device), inputs)
+        y = sinax / norm.unsqueeze(1)
 
-    def forward(self, dist, eps=1e-8):
-        dist = dist.unsqueeze(-1)
-        return torch.sin(self.offsets * math.pi / self.cutoff_upper * dist) / (dist + eps)
+        return y
 
 
 class ShiftedSoftplus(nn.Module):
@@ -161,25 +171,30 @@ class CosineCutoff(nn.Module):
 
 
 class Distance(nn.Module):
-    def __init__(self, cutoff_lower, cutoff_upper):
+    def __init__(self, cutoff_lower, cutoff_upper, return_vec=False):
         super(Distance, self).__init__()
         self.cutoff_lower = cutoff_lower
         self.cutoff_upper = cutoff_upper
+        self.return_vec = return_vec
 
     def forward(self, pos, batch):
         edge_index = radius_graph(pos, r=self.cutoff_upper, batch=batch)
-        edge_weight = (pos[edge_index[0]] - pos[edge_index[1]]).norm(dim=-1)
+        edge_vec = (pos[edge_index[0]] - pos[edge_index[1]])
+        edge_weight = edge_vec.norm(dim=-1)
         
         lower_mask = edge_weight >= self.cutoff_lower
         edge_index = edge_index[:,lower_mask]
         edge_weight = edge_weight[lower_mask]
+        if self.return_vec:
+            edge_vec = edge_vec[lower_mask]
+            return edge_index, edge_weight, edge_vec
         return edge_index, edge_weight
 
 
 rbf_class_mapping = {
     'gauss': GaussianSmearing,
     'expnorm': ExpNormalSmearing,
-    'sinusoid': SinusoidSmearing
+    'bessel': BesselSmearing
 }
 
 act_class_mapping = {
