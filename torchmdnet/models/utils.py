@@ -125,11 +125,18 @@ class BesselSmearing(nn.Module):
         self.trainable = trainable
 
         # compute offset and width of Gaussian functions
-        freqs = torch.arange(1, num_rbf + 1) * math.pi / cutoff_upper
+        freqs = self._initial_params()
         if trainable:
             self.register_parameter('freqs', nn.Parameter(freqs))
         else:
             self.register_buffer('freqs', freqs)
+
+    def _initial_params(self):
+        return torch.arange(1, self.num_rbf + 1) * math.pi / self.cutoff_upper
+
+    def reset_parameters(self):
+        freqs = self._initial_params()
+        self.freqs.data.copy_(freqs)
 
     def forward(self, inputs):
         ax = inputs.unsqueeze(-1) * self.freqs
