@@ -236,9 +236,10 @@ class ElemAttn(nn.Module):
         out = torch.matmul(attn, v)
 
         # slow way of computing attention weights sequentially for each molecule:
-        # out = elementwise_attention(q, k, v, elem_index[1]).transpose(0, 1)
+        # out = elementwise_attention(q, k, v, elem_index[1], self.attn_act)
 
-        out = self.o_proj1(out.reshape(bs, -1))
+        out = out.transpose(0, 1).reshape(bs, -1)
+        out = self.o_proj1(out)
         # TODO: activation here?
 
         # aggregate atom types
@@ -247,14 +248,13 @@ class ElemAttn(nn.Module):
         return self.act(out)
 
 
-@torch.jit.script
-def elementwise_attention(q, k, v, index):
+def elementwise_attention(q, k, v, index, act):
     # this function might be quick when implemented as a CUDA kernel,
     # currently it is very slow due looping over each molecule in the batch
     result = torch.empty_like(q)
     for i in torch.unique(index):
         mask = index == i
         attn = torch.matmul(q[:,mask], k[:,mask].transpose(1, 2))
-        attn = attn.softmax(dim=-1)
+        attn = act(attn)
         result[:,mask] = torch.matmul(attn, v[:,mask])
     return result
