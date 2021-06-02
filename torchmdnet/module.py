@@ -18,8 +18,7 @@ class LNNP(LightningModule):
             self.model = create_model(self.hparams, prior_model, mean, std)
 
         # initialize exponential smoothing
-        self.ema = None
-        self._reset_ema_dict()
+        self.ema_loss = None
 
         # initialize loss collection
         self.losses = None
@@ -71,26 +70,12 @@ class LNNP(LightningModule):
             # force/derivative loss
             loss_dy = loss_fn(deriv, batch.dy)
 
-            if stage in ['train', 'val'] and self.hparams.ema_alpha_dy < 1:
-                if self.ema[stage + '_dy'] is None:
-                    self.ema[stage + '_dy'] = loss_dy.detach()
-                # apply exponential smoothing over batches to dy
-                loss_dy = self.hparams.ema_alpha_dy * loss_dy + (1 - self.hparams.ema_alpha_dy) * self.ema[stage + '_dy']
-                self.ema[stage + '_dy'] = loss_dy.detach()
-
             if self.hparams.force_weight > 0:
                 self.losses[stage + '_dy'].append(loss_dy.detach())
 
         if 'y' in batch:
             # energy/prediction loss
             loss_y = loss_fn(pred, batch.y)
-
-            if stage in ['train', 'val'] and self.hparams.ema_alpha_y < 1:
-                if self.ema[stage + '_y'] is None:
-                    self.ema[stage + '_y'] = loss_y.detach()
-                # apply exponential smoothing over batches to y
-                loss_y = self.hparams.ema_alpha_y * loss_y + (1 - self.hparams.ema_alpha_y) * self.ema[stage + '_y']
-                self.ema[stage + '_y'] = loss_y.detach()
 
             if self.hparams.energy_weight > 0:
                 self.losses[stage + '_y'].append(loss_y.detach())
@@ -123,13 +108,25 @@ class LNNP(LightningModule):
 
     def validation_epoch_end(self, validation_step_outputs):
         if not self.trainer.running_sanity_check:
+            val_loss = torch.stack(self.losses['val']).mean()
+            
+            ema_weight = self.hparams.ema_weight
+            if ema_weight < 1:
+                if self.ema_loss is None:
+                    self.ema_loss = val_loss
+                else:
+                    self.ema_loss = ema_weight * val_loss + (1 - ema_weight) * self.ema_loss
+
             # construct dict of logged metrics
             result_dict = {
                 'epoch': self.current_epoch,
                 'lr': self.trainer.optimizers[0].param_groups[0]['lr'],
                 'train_loss': torch.stack(self.losses['train']).mean(),
-                'val_loss': torch.stack(self.losses['val']).mean(),
+                'val_loss': self.ema_loss if ema_weight < 1 else val_loss,
             }
+
+            if ema_weight < 1:
+                result_dict['orig_val_loss'] = val_loss
 
             # add test loss if available
             if len(self.losses['test']) > 0:
@@ -153,7 +150,3 @@ class LNNP(LightningModule):
         self.losses = {'train': [], 'val': [], 'test': [],
                        'train_y': [], 'val_y': [], 'test_y': [],
                        'train_dy': [], 'val_dy': [], 'test_dy': []}
-
-    def _reset_ema_dict(self):
-        self.ema = {'train_y': None, 'val_y': None,
-                    'train_dy': None, 'val_dy': None}
