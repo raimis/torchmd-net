@@ -43,8 +43,9 @@ def get_args():
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/tmp/logs', help='log file')
     parser.add_argument('--splits', default=None, help='Npz with splits idx_train, idx_val, idx_test')
-    parser.add_argument('--val-ratio', type=float, default=0.05, help='Percentage of validation set')
-    parser.add_argument('--test-ratio', type=float, default=0.1, help='Percentage of test set')
+    parser.add_argument('--train-size', type=float, default=None, help='Percentage/number of samples in training set (None to use all remaining samples)')
+    parser.add_argument('--val-size', type=float, default=0.05, help='Percentage/number of samples in validation set (None to use all remaining samples)')
+    parser.add_argument('--test-size', type=float, default=0.1, help='Percentage/number of samples in test set (None to use all remaining samples)')
     parser.add_argument('--test-interval', type=int, default=10, help='Test interval, one test per n epochs (default: 10)')
     parser.add_argument('--save-interval', type=int, default=10, help='Save interval, one save per n epochs (default: 10)')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
@@ -87,6 +88,7 @@ def get_args():
     parser.add_argument('--cutoff-upper', type=float, default=5.0, help='Upper cutoff in model')
     parser.add_argument('--atom-filter', type=int, default=-1, help='Only sum over atoms with Z > atom_filter')
     parser.add_argument('--max-z', type=int, default=100, help='Maximum atomic number that fits in the embedding matrix')
+    parser.add_argument('--max-num-neighbors', type=int, default=32, help='Maximum number of neighbors to consider in the network')
     parser.add_argument('--standardize', type=bool, default=False, help='If true, multiply prediction by dataset std and add mean')
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--dipole', type=bool, default=False, help='Use the magnitude of the dipole moment to make the prediction')
@@ -136,7 +138,8 @@ def main():
     )
     early_stopping = EarlyStopping('val_loss', patience=args.early_stopping_patience)
 
-    tb_logger = pl.loggers.TensorBoardLogger(args.log_dir, name='tensorbord', version='')
+    tb_logger = pl.loggers.TensorBoardLogger(args.log_dir, name='tensorbord', version='',
+                                             default_hp_metric=False)
     csv_logger = CSVLogger(args.log_dir, name='', version='')
 
     ddp_plugin = None
