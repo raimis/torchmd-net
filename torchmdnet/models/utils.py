@@ -187,7 +187,7 @@ class Distance(nn.Module):
 
     def forward(self, pos, batch):
         edge_index = radius_graph(pos, r=self.cutoff_upper, batch=batch,
-                                  max_num_neighbors=self.max_num_neighbors))
+                                  max_num_neighbors=self.max_num_neighbors)
         edge_vec = (pos[edge_index[0]] - pos[edge_index[1]])
         edge_weight = edge_vec.norm(dim=-1)
 
