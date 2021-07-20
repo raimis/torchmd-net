@@ -4,6 +4,7 @@ from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter
 from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff, Distance,
                                      rbf_class_mapping, act_class_mapping)
+from torchmdnet import attention_weights
 
 
 class TorchMD_ET(nn.Module):
@@ -208,6 +209,9 @@ class EquivariantMultiHeadAttention(MessagePassing):
         dk = self.act(self.dk_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim) if self.dk_proj else None
         dv = self.act(self.dv_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim * 3) if self.dv_proj else None
 
+        # save edge index 
+        attention_weights.append_idx(edge_index)
+
         x, vec = self.propagate(edge_index, q=q, k=k, v=v, vec=vec, dk=dk, dv=dv, r_ij=r_ij, d_ij=d_ij)
         x = x.reshape(-1, self.hidden_channels)
         vec = vec.reshape(-1, 3, self.hidden_channels)
@@ -224,6 +228,9 @@ class EquivariantMultiHeadAttention(MessagePassing):
         else:
             attn = (q_i * k_j * dk).sum(dim=-1)
         attn = self.attn_activation(attn) * self.cutoff(r_ij).unsqueeze(1)
+
+        # save attention weights
+        attention_weights.append_weights(attn)
 
         if dv is not None:
             v_j = v_j * dv
