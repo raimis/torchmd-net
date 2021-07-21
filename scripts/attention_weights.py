@@ -155,7 +155,7 @@ def visualize(weights_directory):
     # subplot 2
     bars = axes[2].barh(range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color='forestgreen')
     for i, v in enumerate(atoms_per_elem.values()):
-        is_max = v == max(atoms_per_elem.values())
+        is_max = v >= max(atoms_per_elem.values()) * 0.85
         axes[2].text(v - 100 if is_max else v + 100, i, str(v), va='center', ha='right' if is_max else 'left', color='1' if is_max else '0')
     axes[2].set_box_aspect(1)
     axes[2].set_xticks([])
