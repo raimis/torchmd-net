@@ -31,7 +31,7 @@ num2elem = {
 
 n_elements = len(z2idx)
 
-def extract_data(model_path, dataset_path, dataset_arg, batch_size):
+def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_molecules=False):
     torch.set_grad_enabled(False)
 
     # load data
@@ -49,6 +49,30 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size):
     # extract attention weights from model
     for batch in tqdm(data):
         model(batch.z, batch.pos, batch.batch)
+
+        if plot_molecules:
+            for mol_idx in batch.batch.unique():
+                fig = plt.figure()
+                ax = fig.add_subplot(111, projection='3d')
+                # edges
+                for idx1, idx2 in batch.edge_index.T[batch.batch[batch.edge_index[0]] == mol_idx]:
+                    # attention weights
+                    max_attn = attention_weights.rollout_weights[-1][batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx].sum(dim=-1).max()
+                    attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
+                    attn_weight = max(0, min(1, attention_weights.rollout_weights[-1][attn_idx].sum() / max_attn))
+                    ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='0', lw=2)
+                    # bonds
+                    ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=0.1, c='0', linestyle='dashed')
+                # nodes
+                for atom_type in z2idx.keys():
+                    if ((batch.batch == mol_idx) & (batch.z == atom_type)).sum() == 0:
+                        continue
+                    colors = [f'C{z2idx[int(z)]}' for z in batch.z[(batch.batch == mol_idx) & (batch.z == atom_type)]]
+                    ax.scatter(*batch.pos[(batch.batch == mol_idx) & (batch.z == atom_type)].T, c=colors, label=num2elem[atom_type], s=100)
+                plt.legend()
+                plt.axis('off')
+                plt.show()
+
         # TODO: is this the correct ordering?
         zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
         zs_1.append(batch.z[attention_weights.rollout_index[-1][1]])
@@ -118,9 +142,10 @@ if __name__ == '__main__':
     parser.add_argument('--dataset-path', type=str, help='Path to the directory containing QM9 dataset files')
     parser.add_argument('--dataset-arg', type=str, help='Additional argument to the dataset class (e.g. target property for QM9)')
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size for the attention weight extraction')
+    parser.add_argument('--plot-molecules', type=bool, help='If True, draws all processed molecules with associated attention weights during extraction')
 
     args = parser.parse_args()
 
     if args.extract_data:
-        extract_data(args.model_path, args.dataset_path, args.dataset_arg, args.batch_size)
+        extract_data(args.model_path, args.dataset_path, args.dataset_arg, args.batch_size, args.plot_molecules)
     visualize(dirname(args.model_path))
