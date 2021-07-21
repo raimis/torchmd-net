@@ -16,20 +16,23 @@ num2elem = {
 
 # load data
 with open(join(model_folder, 'attn_weights.pkl'), 'rb') as f:
-    zs, weights = pickle.load(f)
+    zs, weights, zs_ref, probs_ref = pickle.load(f)
 elements = [num2elem[int(num)] for num in zs]
-weights = [w.permute(2, 0, 1) for w in weights]
-
-# attention rollout (https://arxiv.org/pdf/2005.00928.pdf)
-# TODO: this should be done with raw attention matrices
-cum = weights[0]
-for w in weights[1:]:
-    cum = torch.matmul(w, cum)
-weights = cum.permute(1, 2, 0)
+elements_ref = [num2elem[int(num)] for num in zs_ref]
 
 # plot attention weights
-fig, axes = plt.subplots(ncols=weights.size(-1), sharex=True, sharey=True)
-for i, ax in enumerate(axes):
+fig, axes = plt.subplots(ncols=weights.size(-1) + 1, sharex=True, sharey=True)
+
+axes[0].matshow(probs_ref, cmap='Blues', vmin=0, vmax=1)
+axes[0].set(
+    title='Bond probabilities',
+    xticks=range(len(elements_ref)),
+    yticks=range(len(elements_ref)),
+    xticklabels=elements_ref,
+    yticklabels=elements_ref
+)
+
+for i, ax in enumerate(axes[1:]):
     ax.matshow(weights[...,i], cmap='Reds')
     ax.set(
         title=f'Head {i + 1}',

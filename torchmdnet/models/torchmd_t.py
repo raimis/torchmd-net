@@ -112,6 +112,9 @@ class TorchMD_T(nn.Module):
         if self.neighbor_embedding:
             x = self.neighbor_embedding(z, x, edge_index, edge_weight, edge_attr)
 
+        # save edge index
+        attention_weights.append_idx(edge_index)
+
         for attn in self.attention_layers:
             x = x + attn(x, edge_index, edge_weight, edge_attr)
         x = self.out_norm(x)
@@ -193,9 +196,6 @@ class MultiHeadAttention(MessagePassing):
 
         dk = self.act(self.dk_proj(f_ij)).reshape(head_shape) if self.dk_proj else None
         dv = self.act(self.dv_proj(f_ij)).reshape(head_shape) if self.dv_proj else None
-
-        # save edge index 
-        attention_weights.append_idx(edge_index)
 
         out = self.propagate(edge_index, q=q, k=k, v=v, dk=dk, dv=dv, r_ij=r_ij)
         out = self.o_proj(out.reshape(-1, self.num_heads * self.head_dim))

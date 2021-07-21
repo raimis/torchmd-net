@@ -118,6 +118,9 @@ class TorchMD_ET(nn.Module):
 
         vec = torch.zeros(x.size(0), 3, x.size(1), device=x.device)
 
+        # save edge index
+        attention_weights.store_idx(edge_index)
+
         for attn in self.attention_layers:
             dx, dvec = attn(x, vec, edge_index, edge_weight, edge_attr, edge_vec)
             x = x + dx
@@ -208,9 +211,6 @@ class EquivariantMultiHeadAttention(MessagePassing):
 
         dk = self.act(self.dk_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim) if self.dk_proj else None
         dv = self.act(self.dv_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim * 3) if self.dv_proj else None
-
-        # save edge index 
-        attention_weights.append_idx(edge_index)
 
         x, vec = self.propagate(edge_index, q=q, k=k, v=v, vec=vec, dk=dk, dv=dv, r_ij=r_ij, d_ij=d_ij)
         x = x.reshape(-1, self.hidden_channels)
