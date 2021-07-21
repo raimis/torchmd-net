@@ -132,6 +132,7 @@ def visualize(weights_directory):
         xticklabels=elements,
         yticklabels=elements
     )
+    plt.savefig(join(weights_directory, 'attn_weights.pdf'), bbox_inches='tight')
     plt.show()
 
 
