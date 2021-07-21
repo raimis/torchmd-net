@@ -52,7 +52,8 @@ def _rollout():
         # multiply attention matrix with cumulator
         heads = []
         for head in range(cw.size(1)):
-            inew, wnew = spspmm(index, cw[:,head], cumulator_index, cumulator_weights[:,head], n_atoms, n_atoms, n_atoms, coalesced=True)
+            inew, wnew = spspmm(index, cw[:,head], cumulator_index, cumulator_weights[:,head],
+                                n_atoms, n_atoms, n_atoms, coalesced=True)
             heads.append(wnew)
         # update cumulator
         cumulator_index = inew
