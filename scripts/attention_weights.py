@@ -55,14 +55,17 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
                 fig = plt.figure()
                 ax = fig.add_subplot(111, projection='3d')
                 # edges
-                for idx1, idx2 in batch.edge_index.T[batch.batch[batch.edge_index[0]] == mol_idx]:
+                max_attn = attention_weights.rollout_weights[-1][batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx].max()
+                # for idx1, idx2 in batch.edge_index.T[batch.batch[batch.edge_index[0]] == mol_idx]:
+                for idx1, idx2 in attention_weights.rollout_index[-1].T[batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx]:
                     # attention weights
-                    max_attn = attention_weights.rollout_weights[-1][batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx].sum(dim=-1).max()
                     attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
-                    attn_weight = max(0, min(1, attention_weights.rollout_weights[-1][attn_idx].sum() / max_attn))
-                    ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='0', lw=2)
-                    # bonds
-                    ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=0.1, c='0', linestyle='dashed')
+                    attn_weight = max(0, min(1, attention_weights.rollout_weights[-1][attn_idx] / max_attn))
+                    ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='red', lw=1.5, arrow_length_ratio=0.2)
+                    if ((batch.edge_index[0] == idx1) & (batch.edge_index[1] == idx2)).any() and idx1 != idx2:
+                        # bonds
+                        ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=1, c='0', linestyle='dotted')
+
                 # nodes
                 for atom_type in z2idx.keys():
                     if ((batch.batch == mol_idx) & (batch.z == atom_type)).sum() == 0:
@@ -73,7 +76,6 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
                 plt.axis('off')
                 plt.show()
 
-        # TODO: is this the correct ordering?
         zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
         zs_1.append(batch.z[attention_weights.rollout_index[-1][1]])
         zs_0_ref.append(batch.z[batch.edge_index[0]])
@@ -87,9 +89,9 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
     # reduce attention weights to elemental interactions
     attn = torch.cat(attention_weights.rollout_weights, dim=0)
     attn = scatter(attn, index=index, dim=0, reduce='mean')
-    attn = attn.reshape(n_elements, n_elements, -1)
+    attn = attn.reshape(n_elements, n_elements)
 
-    # compute bonding probabilities from the data
+    # compute bond probabilities from the data
     zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
     zs_ref, counts_ref = torch.unique(zs_ref, dim=1, return_counts=True)
     counts_ref = counts_ref.float()
@@ -112,9 +114,9 @@ def visualize(weights_directory):
     elements_ref = [num2elem[int(num)] for num in zs_ref]
 
     # plot attention weights
-    fig, axes = plt.subplots(ncols=weights.size(-1) + 1, sharex=True, sharey=True)
+    fig, axes = plt.subplots(ncols=2, sharex=True, sharey=True)
 
-    axes[0].matshow(probs_ref, cmap='Blues', vmin=0, vmax=1)
+    axes[0].matshow(probs_ref, cmap='Reds', vmin=0, vmax=1)
     axes[0].set(
         title='Bond probabilities',
         xticks=range(len(elements_ref)),
@@ -122,16 +124,14 @@ def visualize(weights_directory):
         xticklabels=elements_ref,
         yticklabels=elements_ref
     )
-
-    for i, ax in enumerate(axes[1:]):
-        ax.matshow(weights[...,i], cmap='Reds')
-        ax.set(
-            title=f'Head {i + 1}',
-            xticks=range(len(elements)),
-            yticks=range(len(elements)),
-            xticklabels=elements,
-            yticklabels=elements
-        )
+    axes[1].matshow(weights, cmap='Blues')
+    axes[1].set(
+        title=f'Attention weights',
+        xticks=range(len(elements)),
+        yticks=range(len(elements)),
+        xticklabels=elements,
+        yticklabels=elements
+    )
     plt.show()
 
 

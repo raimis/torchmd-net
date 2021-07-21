@@ -44,20 +44,13 @@ def _rollout():
     
     # initialize cumulator with first layer
     cumulator_index = index
-    cumulator_weights = weights[0][-1]
+    cumulator_weights = weights[0][-1].mean(dim=1)
 
     # rollout over layers
     for layer in range(1, num_layers):
-        cw = weights[layer][-1]
         # multiply attention matrix with cumulator
-        heads = []
-        for head in range(cw.size(1)):
-            inew, wnew = spspmm(index, cw[:,head], cumulator_index, cumulator_weights[:,head],
-                                n_atoms, n_atoms, n_atoms, coalesced=True)
-            heads.append(wnew)
-        # update cumulator
-        cumulator_index = inew
-        cumulator_weights = torch.stack(heads, dim=1)
+        cumulator_index, cumulator_weights = spspmm(index, weights[layer][-1].mean(dim=1), cumulator_index, cumulator_weights,
+                                                    n_atoms, n_atoms, n_atoms, coalesced=True)
     # store rolled out attention weights
     rollout_index.append(cumulator_index)
     rollout_weights.append(cumulator_weights)
