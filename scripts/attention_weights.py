@@ -3,11 +3,10 @@ import pickle
 import argparse
 from tqdm import tqdm
 import torch
-from torchmdnet.datasets import QM9
+from torchmdnet import datasets, attention_weights
 from torchmdnet.models import load_model
 from torchmdnet.utils import make_splits
 from torchmdnet.data import Subset
-from torchmdnet import attention_weights
 from torch_geometric.data import DataLoader
 from torch_scatter import scatter
 from matplotlib import pyplot as plt
@@ -29,16 +28,14 @@ num2elem = {
     9: 'F',
 }
 
-n_elements = len(z2idx)
-
-def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_molecules=False):
+def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size=64, plot_molecules=False):
     torch.set_grad_enabled(False)
 
     # load data
     splits_path = join(dirname(model_path), 'splits.npz')
     assert exists(splits_path), f'Missing splits.npz in {dirname(model_path)}.'
     _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
-    data = DataLoader(Subset(QM9(dataset_path, dataset_arg=dataset_arg), test_split), batch_size=batch_size)
+    data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split), batch_size=batch_size)
     # load model
     model = load_model(model_path)
     # initialize attention weight collector
@@ -46,7 +43,7 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
 
     zs_0, zs_1 = [], []
     zs_0_ref, zs_1_ref = [], []
-    atoms_per_elem = {idx: 0 for idx in num2elem.keys()}
+    atoms_per_elem = {}
     # extract attention weights from model
     for batch in tqdm(data):
         model(batch.z, batch.pos, batch.batch)
@@ -57,13 +54,12 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
                 ax = fig.add_subplot(111, projection='3d')
                 # edges
                 max_attn = attention_weights.rollout_weights[-1][batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx].max()
-                # for idx1, idx2 in batch.edge_index.T[batch.batch[batch.edge_index[0]] == mol_idx]:
                 for idx1, idx2 in attention_weights.rollout_index[-1].T[batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx]:
                     # attention weights
                     attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
                     attn_weight = max(0, min(1, attention_weights.rollout_weights[-1][attn_idx] / max_attn))
                     ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='red', lw=1.5, arrow_length_ratio=0.2)
-                    if ((batch.edge_index[0] == idx1) & (batch.edge_index[1] == idx2)).any() and idx1 != idx2:
+                    if batch.edge_index is not None and ((batch.edge_index[0] == idx1) & (batch.edge_index[1] == idx2)).any() and idx1 != idx2:
                         # bonds
                         ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=1, c='0', linestyle='dotted')
 
@@ -79,16 +75,21 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
 
         zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
         zs_1.append(batch.z[attention_weights.rollout_index[-1][1]])
-        zs_0_ref.append(batch.z[batch.edge_index[0]])
-        zs_1_ref.append(batch.z[batch.edge_index[1]])
+        if batch.edge_index is not None:
+            zs_0_ref.append(batch.z[batch.edge_index[0]])
+            zs_1_ref.append(batch.z[batch.edge_index[1]])
 
-        for elem in atoms_per_elem.keys():
+        for elem in batch.z.unique().numpy():
+            if elem not in atoms_per_elem:
+                atoms_per_elem[elem] = 0
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
 
     # compute attention weight scatter indices
     zs = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
+    n_elements = len(zs.unique())
     zs, index = torch.unique(zs, dim=1, return_inverse=True)
     zs = zs.reshape(2, n_elements, n_elements)
+    zs = zs[1,0]
 
     # reduce attention weights to elemental interactions
     attn = torch.cat(attention_weights.rollout_weights, dim=0)
@@ -96,18 +97,22 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
     attn = attn.reshape(n_elements, n_elements)
 
     # compute bond probabilities from the data
-    zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
-    zs_ref, counts_ref = torch.unique(zs_ref, dim=1, return_counts=True)
-    counts_ref = counts_ref.float()
-    for elem in zs_ref.unique():
-        counts_ref[zs_ref[0] == elem] /= counts_ref[zs_ref[0] == elem].sum()
-    index_ref = zs_ref.clone().apply_(lambda z: z2idx[z])
+    zs_ref = zs
     counts_ref_square = torch.zeros(n_elements, n_elements)
-    counts_ref_square[index_ref[0],index_ref[1]] = counts_ref
+    if len(zs_0_ref) > 0:
+        zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
+        zs_ref, counts_ref = torch.unique(zs_ref, dim=1, return_counts=True)
+        counts_ref = counts_ref.float()
+        for elem in zs_ref.unique():
+            counts_ref[zs_ref[0] == elem] /= counts_ref[zs_ref[0] == elem].sum()
+        index_ref = zs_ref.clone().apply_(lambda z: z2idx[z])
+        counts_ref_square = torch.zeros(n_elements, n_elements)
+        counts_ref_square[index_ref[0],index_ref[1]] = counts_ref
+        zs_ref = zs_ref[0].unique()
 
     # save data
     with open(join(dirname(model_path), 'attn_weights.pkl'), 'wb') as f:
-        pickle.dump((zs[1,0], attn, zs_ref[0].unique(), counts_ref_square, atoms_per_elem), f)
+        pickle.dump((zs, attn, zs_ref, counts_ref_square, atoms_per_elem), f)
 
 
 def visualize(weights_directory):
@@ -171,7 +176,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Analyze Attention Weights')
     parser.add_argument('--extract-data', type=bool, help='Whether to extract the attention weights or use previously stored data')
     parser.add_argument('--model-path', type=str, help='Path to a model checkpoint with corresponding splits.npz in the same directory')
-    parser.add_argument('--dataset-path', type=str, help='Path to the directory containing QM9 dataset files')
+    parser.add_argument('--dataset-path', type=str, help='Path to the directory containing the dataset')
+    parser.add_argument('--dataset-name', type=str, choices=datasets.__all__, help='Name of the dataset')
     parser.add_argument('--dataset-arg', type=str, help='Additional argument to the dataset class (e.g. target property for QM9)')
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size for the attention weight extraction')
     parser.add_argument('--plot-molecules', type=bool, help='If True, draws all processed molecules with associated attention weights during extraction')
@@ -179,5 +185,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.extract_data:
-        extract_data(args.model_path, args.dataset_path, args.dataset_arg, args.batch_size, args.plot_molecules)
+        extract_data(args.model_path, args.dataset_path, args.dataset_name, args.dataset_arg, args.batch_size, args.plot_molecules)
     visualize(dirname(args.model_path))
