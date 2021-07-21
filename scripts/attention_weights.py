@@ -46,6 +46,7 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
 
     zs_0, zs_1 = [], []
     zs_0_ref, zs_1_ref = [], []
+    atoms_per_elem = {idx: 0 for idx in num2elem.keys()}
     # extract attention weights from model
     for batch in tqdm(data):
         model(batch.z, batch.pos, batch.batch)
@@ -81,6 +82,9 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
         zs_0_ref.append(batch.z[batch.edge_index[0]])
         zs_1_ref.append(batch.z[batch.edge_index[1]])
 
+        for elem in atoms_per_elem.keys():
+            atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
+
     # compute attention weight scatter indices
     zs = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
     zs, index = torch.unique(zs, dim=1, return_inverse=True)
@@ -103,35 +107,62 @@ def extract_data(model_path, dataset_path, dataset_arg, batch_size=64, plot_mole
 
     # save data
     with open(join(dirname(model_path), 'attn_weights.pkl'), 'wb') as f:
-        pickle.dump((zs[1,0], attn, zs_ref[0].unique(), counts_ref_square), f)
+        pickle.dump((zs[1,0], attn, zs_ref[0].unique(), counts_ref_square, atoms_per_elem), f)
 
 
 def visualize(weights_directory):
     # load data
     with open(join(weights_directory, 'attn_weights.pkl'), 'rb') as f:
-        zs, weights, zs_ref, probs_ref = pickle.load(f)
+        zs, weights, zs_ref, probs_ref, atoms_per_elem = pickle.load(f)
     elements = [num2elem[int(num)] for num in zs]
     elements_ref = [num2elem[int(num)] for num in zs_ref]
 
-    # plot attention weights
-    fig, axes = plt.subplots(ncols=2, sharex=True, sharey=True)
+    plt.rcParams['mathtext.fontset'] = 'cm'
 
-    axes[0].matshow(probs_ref, cmap='Reds', vmin=0, vmax=1)
+    # plot attention weights
+    fig, axes = plt.subplots(ncols=3, sharex=False, sharey=True)
+
+    # subplot 0
+    axes[0].imshow(probs_ref, cmap='Reds', vmin=0, vmax=1)
     axes[0].set(
-        title='Bond probabilities',
         xticks=range(len(elements_ref)),
         yticks=range(len(elements_ref)),
         xticklabels=elements_ref,
-        yticklabels=elements_ref
+        yticklabels=elements_ref,
     )
-    axes[1].matshow(weights, cmap='Blues')
+    axes[0].set_title('Bond Probabilities', fontsize=12)
+    axes[0].set_xlabel('$z_j$', fontsize=15)
+    axes[0].set_ylabel('$z_i$', fontsize=15)
+    axes[0].grid(False)
+
+    # subplot 1
+    axes[1].imshow(weights, cmap='Blues')
     axes[1].set(
-        title=f'Attention weights',
         xticks=range(len(elements)),
         yticks=range(len(elements)),
         xticklabels=elements,
-        yticklabels=elements
+        yticklabels=elements,
     )
+    axes[1].set_title('Attention Scores', fontsize=12)
+    axes[1].set_xlabel('$z_j$', fontsize=15)
+    axes[1].grid(False)
+
+    # subplot 2
+    bars = axes[2].barh(range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color='forestgreen')
+    for i, v in enumerate(atoms_per_elem.values()):
+        is_max = v == max(atoms_per_elem.values())
+        axes[2].text(v - 100 if is_max else v + 100, i, str(v), va='center', ha='right' if is_max else 'left', color='1' if is_max else '0')
+    axes[2].set_box_aspect(1)
+    axes[2].set_xticks([])
+    axes[2].set_title('Total', fontsize=12)
+    axes[2].grid(False)
+    axes[2].tick_params(labelright=True)
+
+    for ax in axes:
+        ax.tick_params(color='0.5', right=True)
+        for spine in ax.spines.values():
+            spine.set_edgecolor('0.5')
+
     plt.savefig(join(weights_directory, 'attn_weights.pdf'), bbox_inches='tight')
     plt.show()
 
