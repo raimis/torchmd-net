@@ -115,7 +115,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
         pickle.dump((zs, attn, zs_ref, counts_ref_square, atoms_per_elem), f)
 
 
-def visualize(weights_directory):
+def visualize(weights_directory, normalize_attention):
     # load data
     with open(join(weights_directory, 'attn_weights.pkl'), 'rb') as f:
         zs, weights, zs_ref, probs_ref, atoms_per_elem = pickle.load(f)
@@ -141,6 +141,8 @@ def visualize(weights_directory):
     axes[0].grid(False)
 
     # subplot 1
+    if normalize_attention:
+        weights = weights / weights.sum(dim=1, keepdim=True)
     axes[1].imshow(weights, cmap='Blues')
     axes[1].set(
         xticks=range(len(elements)),
@@ -181,9 +183,10 @@ if __name__ == '__main__':
     parser.add_argument('--dataset-arg', type=str, help='Additional argument to the dataset class (e.g. target property for QM9)')
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size for the attention weight extraction')
     parser.add_argument('--plot-molecules', type=bool, help='If True, draws all processed molecules with associated attention weights during extraction')
+    parser.add_argument('--normalize-attention', type=bool, help='Whether to normalize the attention scores such that each row adds up to one')
 
     args = parser.parse_args()
 
     if args.extract_data:
         extract_data(args.model_path, args.dataset_path, args.dataset_name, args.dataset_arg, args.batch_size, args.plot_molecules)
-    visualize(dirname(args.model_path))
+    visualize(dirname(args.model_path), args.normalize_attention)
