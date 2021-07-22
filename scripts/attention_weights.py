@@ -10,6 +10,9 @@ from torchmdnet.data import Subset
 from torch_geometric.data import DataLoader
 from torch_scatter import scatter
 from matplotlib import pyplot as plt
+import pandas as pd
+import numpy as np
+from moleculekit.molecule import Molecule
 
 
 z2idx = {
@@ -44,12 +47,22 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     zs_0, zs_1 = [], []
     zs_0_ref, zs_1_ref = [], []
     atoms_per_elem = {}
+    distances = []
     # extract attention weights from model
     for batch in tqdm(data):
         model(batch.z, batch.pos, batch.batch)
 
         if plot_molecules:
             for mol_idx in batch.batch.unique():
+                # visualize using VMD
+                # mask = batch.batch == mol_idx
+                # mol = Molecule().empty(mask.sum())
+                # mol.coords = batch.pos[mask].unsqueeze(2).numpy()
+                # mol.element[:] = [num2elem[num] for num in batch.z[mask].numpy()]
+                # mol.name[:] = [num2elem[num] for num in batch.z[mask].numpy()]
+                # mol.view()
+
+                # visualize using matplotlib
                 fig = plt.figure()
                 ax = fig.add_subplot(111, projection='3d')
                 # edges
@@ -58,7 +71,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                     # attention weights
                     attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
                     attn_weight = max(0, min(1, attention_weights.rollout_weights[-1][attn_idx] / max_attn))
-                    ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='red', lw=1.5, arrow_length_ratio=0.2)
+                    ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='red', lw=1, arrow_length_ratio=0.1)
                     if batch.edge_index is not None and ((batch.edge_index[0] == idx1) & (batch.edge_index[1] == idx2)).any() and idx1 != idx2:
                         # bonds
                         ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=1, c='0', linestyle='dotted')
@@ -84,16 +97,18 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                 atoms_per_elem[elem] = 0
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
 
+        distances.append(((batch.pos[attention_weights.rollout_index[-1][0]] - batch.pos[attention_weights.rollout_index[-1][1]]) ** 2).sum(dim=-1).sqrt())
+
     # compute attention weight scatter indices
-    zs = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
-    n_elements = len(zs.unique())
-    zs, index = torch.unique(zs, dim=1, return_inverse=True)
+    zs_full = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
+    n_elements = len(zs_full.unique())
+    zs, index = torch.unique(zs_full, dim=1, return_inverse=True)
     zs = zs.reshape(2, n_elements, n_elements)
     zs = zs[1,0]
 
     # reduce attention weights to elemental interactions
-    attn = torch.cat(attention_weights.rollout_weights, dim=0)
-    attn = scatter(attn, index=index, dim=0, reduce='mean')
+    attn_full = torch.cat(attention_weights.rollout_weights, dim=0)
+    attn = scatter(attn_full, index=index, dim=0, reduce='mean')
     attn = attn.reshape(n_elements, n_elements)
 
     # compute bond probabilities from the data
@@ -110,15 +125,17 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
         counts_ref_square[index_ref[0],index_ref[1]] = counts_ref
         zs_ref = zs_ref[0].unique()
 
+    dist = torch.cat(distances)
+
     # save data
     with open(join(dirname(model_path), 'attn_weights.pkl'), 'wb') as f:
-        pickle.dump((zs, attn, zs_ref, counts_ref_square, atoms_per_elem), f)
+        pickle.dump((zs, attn, zs_ref, counts_ref_square, atoms_per_elem, zs_full, attn_full, dist), f)
 
 
 def visualize(weights_directory, normalize_attention):
     # load data
     with open(join(weights_directory, 'attn_weights.pkl'), 'rb') as f:
-        zs, weights, zs_ref, probs_ref, atoms_per_elem = pickle.load(f)
+        zs, weights, zs_ref, probs_ref, atoms_per_elem, zs_full, attn_full, dist = pickle.load(f)
     elements = [num2elem[int(num)] for num in zs]
     elements_ref = [num2elem[int(num)] for num in zs_ref]
 
@@ -171,6 +188,18 @@ def visualize(weights_directory, normalize_attention):
             spine.set_edgecolor('0.5')
 
     plt.savefig(join(weights_directory, 'attn_weights.pdf'), bbox_inches='tight')
+
+    # visualize attention by distance
+    z1, z2 = 1, 6
+    ma_width = 10000
+    mask = ((zs_full[0] == z1) & (zs_full[1] == z2)) | ((zs_full[0] == z2) & (zs_full[1] == z1))
+    plt.figure()
+    plt.grid(True)
+    plt.scatter(dist[mask].sort().values, pd.Series(attn_full[mask][dist[mask].argsort()]).rolling(ma_width).mean().shift(-ma_width), marker='.')
+    plt.xlabel('Distance ($\AA$)')
+    plt.ylabel('Attention score')
+    plt.title('Attention scores by distance for Hydrogen-Carbon interactions')
+    plt.xlim(0)
     plt.show()
 
 

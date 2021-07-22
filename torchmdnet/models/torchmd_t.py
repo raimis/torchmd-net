@@ -113,7 +113,7 @@ class TorchMD_T(nn.Module):
             x = self.neighbor_embedding(z, x, edge_index, edge_weight, edge_attr)
 
         # save edge index
-        attention_weights.append_idx(edge_index)
+        attention_weights.store_idx(edge_index, dist=edge_weight)
 
         for attn in self.attention_layers:
             x = x + attn(x, edge_index, edge_weight, edge_attr)

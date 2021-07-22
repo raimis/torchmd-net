@@ -7,17 +7,19 @@ weights = None
 edge_index = None
 rollout_index = None
 rollout_weights = None
+distances = None
 _current_layer = None
 
 
 def create(layers):
-    global num_layers, weights, edge_index, rollout_index, rollout_weights, _current_layer
+    global num_layers, weights, edge_index, rollout_index, rollout_weights, distances, _current_layer
     # initialize everything
     num_layers = layers
     weights = [[] for _ in range(num_layers)]
     edge_index = []
     rollout_index = []
     rollout_weights = []
+    distances = []
     _current_layer = 0
 
 
@@ -56,6 +58,8 @@ def _rollout():
     rollout_weights.append(cumulator_weights)
 
 
-def store_idx(idx):
-    global edge_index
+def store_idx(idx, dist=None):
+    global edge_index, distances
     edge_index.append(idx)
+    if dist is not None:
+        distances.append(dist)
