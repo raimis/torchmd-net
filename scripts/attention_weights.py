@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
 from moleculekit.molecule import Molecule
+from moleculekit.vmdgraphics import VMDCylinder
 
 
 z2idx = {
@@ -52,39 +53,48 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     for batch in tqdm(data):
         model(batch.z, batch.pos, batch.batch)
 
-        if plot_molecules:
+        if plot_molecules != 'off':
             for mol_idx in batch.batch.unique():
-                # visualize using VMD
-                # mask = batch.batch == mol_idx
-                # mol = Molecule().empty(mask.sum())
-                # mol.coords = batch.pos[mask].unsqueeze(2).numpy()
-                # mol.element[:] = [num2elem[num] for num in batch.z[mask].numpy()]
-                # mol.name[:] = [num2elem[num] for num in batch.z[mask].numpy()]
-                # mol.view()
+                rollout_batch = batch.batch[attention_weights.rollout_index[-1][0]]
+                if plot_molecules == 'VMD':
+                    # visualize using VMD
+                    mask = batch.batch == mol_idx
+                    mol = Molecule().empty(mask.sum())
+                    mol.coords = batch.pos[mask].unsqueeze(2).numpy()
+                    mol.element[:] = [num2elem[num] for num in batch.z[mask].numpy()]
+                    mol.name[:] = [num2elem[num] for num in batch.z[mask].numpy()]
 
-                # visualize using matplotlib
-                fig = plt.figure()
-                ax = fig.add_subplot(111, projection='3d')
-                # edges
-                max_attn = attention_weights.rollout_weights[-1][batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx].max()
-                for idx1, idx2 in attention_weights.rollout_index[-1].T[batch.batch[attention_weights.rollout_index[-1][0]] == mol_idx]:
-                    # attention weights
-                    attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
-                    attn_weight = max(0, min(1, attention_weights.rollout_weights[-1][attn_idx] / max_attn))
-                    ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='red', lw=1, arrow_length_ratio=0.1)
-                    if batch.edge_index is not None and ((batch.edge_index[0] == idx1) & (batch.edge_index[1] == idx2)).any() and idx1 != idx2:
-                        # bonds
-                        ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=1, c='0', linestyle='dotted')
+                    max_attn = attention_weights.rollout_weights[-1][rollout_batch == mol_idx].max()
+                    for idx1, idx2 in attention_weights.rollout_index[-1].T[rollout_batch == mol_idx]:
+                        attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
+                        radius = 0.05 * float(attention_weights.rollout_weights[-1][attn_idx] / max_attn)
+                        if radius > 0:
+                            c = VMDCylinder(mol.coords[idx1].flatten(), mol.coords[idx2].flatten(), radius=radius)
+                    mol.view(style='CPK')
+                elif plot_molecules == 'matplotlib':
+                    # visualize using matplotlib
+                    fig = plt.figure()
+                    ax = fig.add_subplot(111, projection='3d')
+                    # edges
+                    max_attn = attention_weights.rollout_weights[-1][rollout_batch == mol_idx].max()
+                    for idx1, idx2 in attention_weights.rollout_index[-1].T[rollout_batch == mol_idx]:
+                        # attention weights
+                        attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
+                        attn_weight = max(0, min(1, attention_weights.rollout_weights[-1][attn_idx] / max_attn))
+                        ax.quiver(*batch.pos[idx1], *(batch.pos[idx2] - batch.pos[idx1]), alpha=float(attn_weight), colors='red', lw=1, arrow_length_ratio=0.1)
+                        if batch.edge_index is not None and ((batch.edge_index[0] == idx1) & (batch.edge_index[1] == idx2)).any() and idx1 != idx2:
+                            # bonds
+                            ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=1, c='0', linestyle='dotted')
 
-                # nodes
-                for atom_type in z2idx.keys():
-                    if ((batch.batch == mol_idx) & (batch.z == atom_type)).sum() == 0:
-                        continue
-                    colors = [f'C{z2idx[int(z)]}' for z in batch.z[(batch.batch == mol_idx) & (batch.z == atom_type)]]
-                    ax.scatter(*batch.pos[(batch.batch == mol_idx) & (batch.z == atom_type)].T, c=colors, label=num2elem[atom_type], s=100)
-                plt.legend()
-                plt.axis('off')
-                plt.show()
+                    # nodes
+                    for atom_type in z2idx.keys():
+                        if ((batch.batch == mol_idx) & (batch.z == atom_type)).sum() == 0:
+                            continue
+                        colors = [f'C{z2idx[int(z)]}' for z in batch.z[(batch.batch == mol_idx) & (batch.z == atom_type)]]
+                        ax.scatter(*batch.pos[(batch.batch == mol_idx) & (batch.z == atom_type)].T, c=colors, label=num2elem[atom_type], s=100)
+                    plt.legend()
+                    plt.axis('off')
+                    plt.show()
 
         zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
         zs_1.append(batch.z[attention_weights.rollout_index[-1][1]])
@@ -191,15 +201,18 @@ def visualize(weights_directory, normalize_attention):
 
     # visualize attention by distance
     z1, z2 = 1, 6
-    ma_width = 10000
+    ma_width = 1000
     mask = ((zs_full[0] == z1) & (zs_full[1] == z2)) | ((zs_full[0] == z2) & (zs_full[1] == z1))
-    plt.figure()
-    plt.grid(True)
-    plt.scatter(dist[mask].sort().values, pd.Series(attn_full[mask][dist[mask].argsort()]).rolling(ma_width).mean().shift(-ma_width), marker='.')
-    plt.xlabel('Distance ($\AA$)')
-    plt.ylabel('Attention score')
-    plt.title('Attention scores by distance for Hydrogen-Carbon interactions')
-    plt.xlim(0)
+    fig, ax = plt.subplots()
+    ax.grid(True)
+    ax.hist(dist[mask].numpy(), bins=70, color='C1', alpha=0.3)
+    ax.set_ylabel('Number of interactions')
+    ax = ax.twinx()
+    ax.scatter(dist[mask].sort().values, pd.Series(attn_full[mask][dist[mask].argsort()]).rolling(ma_width).mean().shift(-ma_width), marker='.')
+    ax.set_xlabel('Distance ($\AA$)')
+    ax.set_ylabel('Attention score')
+    ax.set_title('Attention scores by distance for Hydrogen-Carbon interactions')
+    ax.set_xlim(0)
     plt.show()
 
 
@@ -211,7 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset-name', type=str, choices=datasets.__all__, help='Name of the dataset')
     parser.add_argument('--dataset-arg', type=str, help='Additional argument to the dataset class (e.g. target property for QM9)')
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size for the attention weight extraction')
-    parser.add_argument('--plot-molecules', type=bool, help='If True, draws all processed molecules with associated attention weights during extraction')
+    parser.add_argument('--plot-molecules', type=str, default='off', choices=['off', 'VMD', 'matplotlib'], help='If True, draws all processed molecules with associated attention weights during extraction')
     parser.add_argument('--normalize-attention', type=bool, help='Whether to normalize the attention scores such that each row adds up to one')
 
     args = parser.parse_args()
