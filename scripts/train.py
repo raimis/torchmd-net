@@ -2,7 +2,6 @@ import sys
 import os
 import torch
 import argparse
-from functools import partial
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping

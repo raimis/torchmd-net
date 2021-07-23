@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 from moleculekit.molecule import Molecule
 from moleculekit.vmdgraphics import VMDCylinder
-from moleculekit.vmdviewer import VMD, getCurrentViewer
+from moleculekit.vmdviewer import getCurrentViewer
 
 
 num2elem = {
@@ -85,7 +85,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                     for idx1, idx2 in attention_weights.rollout_index[-1].T[rollout_batch == mol_idx]:
                         attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
                         strength = float(attention_weights.rollout_weights[-1][attn_idx] / max_attn)
-                        
+
                         draw_thresholds = (0.1, -0.1)
                         if strength > draw_thresholds[0] or strength < draw_thresholds[1]:
                             vmd.send(f'mol new')
@@ -98,7 +98,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                                 VMDCylinder(mol.coords[idx1 - idx_offset].flatten(), mol.coords[idx2 - idx_offset].flatten(), color='red', radius=0.05 * abs(strength))
                             elif strength < draw_thresholds[1]:
                                 VMDCylinder(mol.coords[idx1 - idx_offset].flatten(), mol.coords[idx2 - idx_offset].flatten(), color='blue', radius=0.05 * abs(strength))
-                    
+
                     mol.view(style='Licorice', viewerhandle=vmd)
                     vmd.send('mol modstyle 0 top Licorice 0.1 12 12')
                     vmd.send('mol modmaterial 0 top Transparent')
@@ -106,6 +106,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                     vmd.send(f'material change opacity Diffuse 1')
                     vmd.send(f'material change opacity Specular 0')
                     vmd.send('display rendermode GLSL')
+
                     while not vmd.completed():
                         time.sleep(0.1)
                 elif plot_molecules == 'matplotlib':
