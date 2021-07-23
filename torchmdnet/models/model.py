@@ -165,7 +165,7 @@ class TorchMD_Net(nn.Module):
         if self.derivative:
             if torch.is_grad_enabled():
                 dy = -grad(out, pos, grad_outputs=torch.ones_like(out),
-                        create_graph=True, retain_graph=True)[0]
+                           create_graph=True, retain_graph=True)[0]
                 return out, dy
             else:
                 rank_zero_warn('Model needs to compute derivative but grad is disabled')
