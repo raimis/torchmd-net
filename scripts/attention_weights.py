@@ -260,7 +260,7 @@ def visualize(basedir, normalize_attention):
 
 
     for path_idx, path in enumerate(paths):
-        print(f'creating dist-attention plot ({path_idx + 1}/{len(paths)}')
+        print(f'creating dist-attention plot ({path_idx + 1}/{len(paths)})')
         # load data
         with open(path, 'rb') as f:
             _, _, _, _, _, zs_full, attn_full, dist = pickle.load(f)
