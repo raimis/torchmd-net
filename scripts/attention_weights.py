@@ -59,7 +59,8 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                 mol.element[:] = [num2elem[num] for num in batch.z[mask].numpy()]
                 mol.name[:] = [num2elem[num] for num in batch.z[mask].numpy()]
 
-                edge_index.append(torch.from_numpy(mol._guessBonds().T.astype(np.int64)) + idx_offset)
+                idxs = torch.from_numpy(mol._guessBonds().T.astype(np.int64)) + idx_offset
+                edge_index.append(torch.cat([idxs, idxs.flip(dims=(0,))], dim=1))
 
                 idx_offset += mask.sum()
             batch.edge_index = torch.cat(edge_index, dim=1)
