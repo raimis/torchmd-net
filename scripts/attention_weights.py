@@ -27,7 +27,7 @@ n_elements = len(num2elem)
 torch.manual_seed(1234)
 
 
-def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size=64, plot_molecules=False):
+def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size=64, plot_molecules=False, device='cpu'):
     torch.set_grad_enabled(False)
 
     # load data
@@ -37,7 +37,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split),
                       batch_size=batch_size, shuffle=True, num_workers=2)
     # load model
-    model = load_model(model_path)
+    model = load_model(model_path).to(device)
     # initialize attention weight collector
     attention_weights.create(model.representation_model.num_layers)
 
@@ -47,7 +47,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     distances = []
     # extract attention weights from model
     for batch in tqdm(data):
-        model(batch.z, batch.pos, batch.batch)
+        model(batch.z.to(device), batch.pos.to(device), batch.batch.to(device))
 
         if batch.edge_index is None:
             # guess bonds
@@ -286,9 +286,12 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size for the attention weight extraction')
     parser.add_argument('--plot-molecules', type=str, default='off', choices=['off', 'VMD', 'matplotlib'], help='If True, draws all processed molecules with associated attention weights during extraction')
     parser.add_argument('--normalize-attention', type=bool, help='Whether to normalize the attention scores such that each row adds up to one')
+    parser.add_argument('--device', type=str, default='cpu', help='Device to run the extraction on')
 
     args = parser.parse_args()
 
     if args.extract_data:
-        extract_data(args.model_path, args.dataset_path, args.dataset_name, args.dataset_arg, args.batch_size, args.plot_molecules)
+        extract_data(args.model_path, args.dataset_path, args.dataset_name,
+                     args.dataset_arg, args.batch_size, args.plot_molecules,
+                     args.device)
     visualize(dirname(dirname(args.model_path)), args.normalize_attention)
