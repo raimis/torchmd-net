@@ -1,6 +1,8 @@
+import os
 from os.path import dirname, join, exists
 import pickle
 import time
+import glob
 import argparse
 from tqdm import tqdm
 import torch
@@ -18,13 +20,9 @@ from moleculekit.vmdgraphics import VMDCylinder
 from moleculekit.vmdviewer import getCurrentViewer
 
 
-num2elem = {
-    1: 'H',
-    6: 'C',
-    7: 'N',
-    8: 'O',
-    9: 'F',
-}
+num2elem = {1: 'H', 6: 'C', 7: 'N', 8: 'O', 9: 'F'}
+z2idx = {1: 0, 6: 1, 7: 2, 8: 3, 9: 4}
+n_elements = len(num2elem)
 
 torch.manual_seed(1234)
 
@@ -44,7 +42,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
 
     zs_0, zs_1 = [], []
     zs_0_ref, zs_1_ref = [], []
-    atoms_per_elem = {}
+    atoms_per_elem = {z: 0 for z in z2idx.keys()}
     distances = []
     # extract attention weights from model
     for batch in tqdm(data):
@@ -142,23 +140,27 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
         zs_1_ref.append(batch.z[batch.edge_index[1]])
 
         for elem in batch.z.unique().numpy():
-            if elem not in atoms_per_elem:
-                atoms_per_elem[elem] = 0
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
 
         distances.append(((batch.pos[attention_weights.rollout_index[-1][0]] - batch.pos[attention_weights.rollout_index[-1][1]]) ** 2).sum(dim=-1).sqrt())
 
+        if len(attention_weights.edge_index) > 2:
+            break
+
     # compute attention weight scatter indices
     zs_full = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
-    n_elements = len(zs_full.unique())
     zs, index = torch.unique(zs_full, dim=1, return_inverse=True)
-    zs = zs.reshape(2, n_elements, n_elements)
-    zs = zs[1,0]
+    z_idxs = zs.clone().apply_(lambda z: z2idx[z])
+    tmp = torch.zeros(2, n_elements, n_elements).long()
+    tmp[:,z_idxs[0],z_idxs[1]] = zs
+    zs = tmp[1,0]
 
     # reduce attention weights to elemental interactions
     attn_full = torch.cat(attention_weights.rollout_weights, dim=0)
     attn = scatter(attn_full, index=index, dim=0, reduce='mean')
-    attn = attn.reshape(n_elements, n_elements)
+    tmp = torch.full((n_elements, n_elements), float('nan'))
+    tmp[z_idxs[0],z_idxs[1]] = attn
+    attn = tmp
 
     # compute bond probabilities from the data
     zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
@@ -166,9 +168,8 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     counts_ref = counts_ref.float()
     for elem in zs_ref.unique():
         counts_ref[zs_ref[0] == elem] /= counts_ref[zs_ref[0] == elem].sum()
-    z2idx = {int(z): i for i, z in enumerate(zs_full.unique().sort().values)}
     index_ref = zs_ref.clone().apply_(lambda z: z2idx[z])
-    counts_ref_square = torch.zeros(n_elements, n_elements)
+    counts_ref_square = torch.full((n_elements, n_elements), float('nan'))
     counts_ref_square[index_ref[0],index_ref[1]] = counts_ref
     zs_ref = zs_ref[0].unique()
 
@@ -179,79 +180,102 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
         pickle.dump((zs, attn, zs_ref, counts_ref_square, atoms_per_elem, zs_full, attn_full, dist), f)
 
 
-def visualize(weights_directory, normalize_attention):
-    # load data
-    with open(join(weights_directory, 'attn_weights.pkl'), 'rb') as f:
-        zs, weights, zs_ref, probs_ref, atoms_per_elem, zs_full, attn_full, dist = pickle.load(f)
-    elements = [num2elem[int(num)] for num in zs]
-    elements_ref = [num2elem[int(num)] for num in zs_ref]
-
+def visualize(basedir, normalize_attention):
     plt.rcParams['mathtext.fontset'] = 'cm'
 
+    paths = sorted(glob.glob(join(basedir, '**', 'attn_weights.pkl'), recursive=True))[::-1]
+
     # plot attention weights
-    fig, axes = plt.subplots(ncols=3, sharex=False, sharey=True)
+    fig, axes_all = plt.subplots(nrows=len(paths), ncols=4, sharex=False, sharey=True, figsize=(8, 4.8),
+                                 gridspec_kw=dict(width_ratios=[0.5, 1, 1, 1], hspace=0))
 
-    # subplot 0
-    axes[0].imshow(probs_ref, cmap='Reds', vmin=0, vmax=1)
-    axes[0].set(
-        xticks=range(len(elements_ref)),
-        yticks=range(len(elements_ref)),
-        xticklabels=elements_ref,
-        yticklabels=elements_ref,
-    )
-    axes[0].set_title('Bond Probabilities', fontsize=12)
-    axes[0].set_xlabel('$z_j$', fontsize=15)
-    axes[0].set_ylabel('$z_i$', fontsize=15)
-    axes[0].grid(False)
+    for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all[:,1:])):
+        axes_all[dataset_idx,0].axis('off')
+        axes_all[dataset_idx,0].text(0.6, 0.5, path.split(os.sep)[-2].split('-')[0], ha='right', va='center',
+                                     transform=axes_all[dataset_idx,0].transAxes, fontsize=15)
 
-    # subplot 1
-    if normalize_attention:
-        weights = weights / weights.sum(dim=1, keepdim=True)
-    axes[1].imshow(weights, cmap='Blues')
-    axes[1].set(
-        xticks=range(len(elements)),
-        yticks=range(len(elements)),
-        xticklabels=elements,
-        yticklabels=elements,
-    )
-    axes[1].set_title('Attention Scores', fontsize=12)
-    axes[1].set_xlabel('$z_j$', fontsize=15)
-    axes[1].grid(False)
+        # load data
+        with open(path, 'rb') as f:
+            zs, weights, zs_ref, probs_ref, atoms_per_elem, _, _, _ = pickle.load(f)
+        elements = num2elem.values()
 
-    # subplot 2
-    axes[2].barh(range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color='forestgreen')
-    for i, v in enumerate(atoms_per_elem.values()):
-        is_max = v >= max(atoms_per_elem.values()) * 0.85
-        axes[2].text(v - 100 if is_max else v + 100, i, str(v), va='center', ha='right' if is_max else 'left', color='1' if is_max else '0')
-    axes[2].set_box_aspect(1)
-    axes[2].set_xticks([])
-    axes[2].set_title('Total', fontsize=12)
-    axes[2].grid(False)
-    axes[2].tick_params(labelright=True)
+        # subplot 0
+        axes[0].imshow(probs_ref, cmap='Reds', vmin=0, vmax=1)
+        axes[0].set(
+            xticks=range(len(elements)),
+            yticks=range(len(elements)),
+            xticklabels=elements,
+            yticklabels=elements,
+        )
+        axes[0].set_ylabel('$z_i$', fontsize=15)
+        if dataset_idx == 0:
+            axes[0].set_title('Bond Probabilities', fontsize=12)
+            axes[0].tick_params(labelleft=True, labelbottom=False)
+        else:
+            axes[0].tick_params(labelleft=True, top=True)
+        if dataset_idx == len(paths) - 1:
+            axes[0].set_xlabel('$z_j$', fontsize=15)
 
-    for ax in axes:
-        ax.tick_params(color='0.5', right=True)
-        for spine in ax.spines.values():
-            spine.set_edgecolor('0.5')
+        # subplot 1
+        if normalize_attention:
+            mask = ~weights.isnan().all(dim=1)
+            weights[mask] = weights[mask] / weights[mask].nansum(dim=1, keepdim=True)
+        axes[1].imshow(weights, cmap='Blues')
+        axes[1].set(
+            xticks=range(len(elements)),
+            yticks=range(len(elements)),
+            xticklabels=elements,
+            yticklabels=elements,
+        )
+        if dataset_idx == 0:
+            axes[1].set_title('Attention Scores', fontsize=12)
+            axes[1].tick_params(labelbottom=False)
+        else:
+            axes[1].tick_params(top=True)
+        if dataset_idx == len(paths) - 1:
+            axes[1].set_xlabel('$z_j$', fontsize=15)
 
-    plt.savefig(join(weights_directory, 'attn_weights.pdf'), bbox_inches='tight')
+        # subplot 2
+        axes[2].barh(range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color='forestgreen')
+        for i, v in enumerate(atoms_per_elem.values()):
+            is_max = v >= max(atoms_per_elem.values()) * 0.85
+            offset = max(atoms_per_elem.values()) * 0.025
+            axes[2].text(v - offset if is_max else v + offset, i, str(v), va='center', ha='right' if is_max else 'left', color='1' if is_max else '0')
+        axes[2].set_box_aspect(1)
+        axes[2].set_xticks([])
+        if dataset_idx == 0:
+            axes[2].set_title('Total', fontsize=12)
+        axes[2].tick_params(labelright=True)
 
-    # visualize attention by distance
-    z1, z2 = 1, 6
-    ma_width = 1000
-    mask = ((zs_full[0] == z1) & (zs_full[1] == z2)) | ((zs_full[0] == z2) & (zs_full[1] == z1))
-    fig, ax = plt.subplots()
-    ax.grid(True)
-    ax.hist(dist[mask].numpy(), bins=70, color='C1', alpha=0.3)
-    ax.set_ylabel('Number of interactions', color='C1')
-    ax = ax.twinx()
-    averaged = pd.Series(attn_full[mask][dist[mask].argsort()]).rolling(ma_width).mean().shift(-ma_width).values
-    ax.scatter(dist[mask].sort().values, averaged, marker='.', color='C0')
-    ax.set_xlabel('Distance ($\AA$)')
-    ax.set_ylabel('Attention score', color='C0')
-    ax.set_title('Attention scores by distance for Hydrogen-Carbon interactions')
-    ax.set_xlim(0)
-    plt.show()
+        for ax in axes:
+            ax.tick_params(color='0.5', right=True)
+            for spine in ax.spines.values():
+                spine.set_edgecolor('0.5')
+
+    plt.savefig(join(basedir, 'attn_weights.pdf'), bbox_inches='tight')
+
+
+    for path in paths:
+        # load data
+        with open(path, 'rb') as f:
+            _, _, _, _, _, zs_full, attn_full, dist = pickle.load(f)
+
+        # visualize attention by distance
+        z1, z2 = 1, 6
+        ma_width = 1000
+        mask = ((zs_full[0] == z1) & (zs_full[1] == z2)) | ((zs_full[0] == z2) & (zs_full[1] == z1))
+        fig, ax = plt.subplots()
+        ax.grid(True)
+        ax.hist(dist[mask].numpy(), bins=70, color='C1', alpha=0.3)
+        ax.set_ylabel('Number of interactions', color='C1')
+        ax = ax.twinx()
+        averaged = pd.Series(attn_full[mask][dist[mask].argsort()]).rolling(ma_width).mean().shift(-ma_width).values
+        ax.scatter(dist[mask].sort().values, averaged, marker='.', color='C0')
+        ax.set_xlabel('Distance ($\AA$)')
+        ax.set_ylabel('Attention score', color='C0')
+        ax.set_title('Attention scores by distance for Hydrogen-Carbon interactions')
+        ax.set_xlim(0)
+        plt.savefig(join(dirname(path), 'attn-dist.pdf'), bbox_inches='tight')
 
 
 if __name__ == '__main__':
@@ -269,4 +293,4 @@ if __name__ == '__main__':
 
     if args.extract_data:
         extract_data(args.model_path, args.dataset_path, args.dataset_name, args.dataset_arg, args.batch_size, args.plot_molecules)
-    visualize(dirname(args.model_path), args.normalize_attention)
+    visualize(dirname(dirname(args.model_path)), args.normalize_attention)
