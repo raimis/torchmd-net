@@ -16,14 +16,6 @@ from moleculekit.molecule import Molecule
 from moleculekit.vmdgraphics import VMDCylinder
 
 
-z2idx = {
-    1: 0,
-    6: 1,
-    7: 2,
-    8: 3,
-    9: 4
-}
-
 num2elem = {
     1: 'H',
     6: 'C',
@@ -32,6 +24,9 @@ num2elem = {
     9: 'F',
 }
 
+torch.manual_seed(1234)
+
+
 def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size=64, plot_molecules=False):
     torch.set_grad_enabled(False)
 
@@ -39,7 +34,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     splits_path = join(dirname(model_path), 'splits.npz')
     assert exists(splits_path), f'Missing splits.npz in {dirname(model_path)}.'
     _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
-    data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split), batch_size=batch_size)
+    data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split), batch_size=batch_size, shuffle=True)
     # load model
     model = load_model(model_path)
     # initialize attention weight collector
@@ -52,6 +47,22 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     # extract attention weights from model
     for batch in tqdm(data):
         model(batch.z, batch.pos, batch.batch)
+
+        if batch.edge_index is None:
+            # guess bonds
+            idx_offset = 0
+            edge_index = []
+            for mol_idx in batch.batch.unique():
+                mask = batch.batch == mol_idx
+                mol = Molecule().empty(mask.sum())
+                mol.coords = batch.pos[mask].unsqueeze(2).numpy()
+                mol.element[:] = [num2elem[num] for num in batch.z[mask].numpy()]
+                mol.name[:] = [num2elem[num] for num in batch.z[mask].numpy()]
+
+                edge_index.append(torch.from_numpy(mol._guessBonds().T.astype(np.int64)) + idx_offset)
+
+                idx_offset += mask.sum()
+            batch.edge_index = torch.cat(edge_index, dim=1)
 
         if plot_molecules != 'off':
             for mol_idx in batch.batch.unique():
@@ -87,10 +98,10 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                             ax.plot(*torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1), alpha=1, c='0', linestyle='dotted')
 
                     # nodes
-                    for atom_type in z2idx.keys():
+                    for atom_type in num2elem.keys():
                         if ((batch.batch == mol_idx) & (batch.z == atom_type)).sum() == 0:
                             continue
-                        colors = [f'C{z2idx[int(z)]}' for z in batch.z[(batch.batch == mol_idx) & (batch.z == atom_type)]]
+                        colors = [f'C{int(z)}' for z in batch.z[(batch.batch == mol_idx) & (batch.z == atom_type)]]
                         ax.scatter(*batch.pos[(batch.batch == mol_idx) & (batch.z == atom_type)].T, c=colors, label=num2elem[atom_type], s=100)
                     plt.legend()
                     plt.axis('off')
@@ -98,9 +109,9 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
 
         zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
         zs_1.append(batch.z[attention_weights.rollout_index[-1][1]])
-        if batch.edge_index is not None:
-            zs_0_ref.append(batch.z[batch.edge_index[0]])
-            zs_1_ref.append(batch.z[batch.edge_index[1]])
+
+        zs_0_ref.append(batch.z[batch.edge_index[0]])
+        zs_1_ref.append(batch.z[batch.edge_index[1]])
 
         for elem in batch.z.unique().numpy():
             if elem not in atoms_per_elem:
@@ -122,18 +133,16 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     attn = attn.reshape(n_elements, n_elements)
 
     # compute bond probabilities from the data
-    zs_ref = zs
+    zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
+    zs_ref, counts_ref = torch.unique(zs_ref, dim=1, return_counts=True)
+    counts_ref = counts_ref.float()
+    for elem in zs_ref.unique():
+        counts_ref[zs_ref[0] == elem] /= counts_ref[zs_ref[0] == elem].sum()
+    z2idx = {int(z): i for i, z in enumerate(zs_full.unique().sort().values)}
+    index_ref = zs_ref.clone().apply_(lambda z: z2idx[z])
     counts_ref_square = torch.zeros(n_elements, n_elements)
-    if len(zs_0_ref) > 0:
-        zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
-        zs_ref, counts_ref = torch.unique(zs_ref, dim=1, return_counts=True)
-        counts_ref = counts_ref.float()
-        for elem in zs_ref.unique():
-            counts_ref[zs_ref[0] == elem] /= counts_ref[zs_ref[0] == elem].sum()
-        index_ref = zs_ref.clone().apply_(lambda z: z2idx[z])
-        counts_ref_square = torch.zeros(n_elements, n_elements)
-        counts_ref_square[index_ref[0],index_ref[1]] = counts_ref
-        zs_ref = zs_ref[0].unique()
+    counts_ref_square[index_ref[0],index_ref[1]] = counts_ref
+    zs_ref = zs_ref[0].unique()
 
     dist = torch.cat(distances)
 
