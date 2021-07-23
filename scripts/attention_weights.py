@@ -34,7 +34,8 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     splits_path = join(dirname(model_path), 'splits.npz')
     assert exists(splits_path), f'Missing splits.npz in {dirname(model_path)}.'
     _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
-    data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split), batch_size=batch_size, shuffle=True)
+    data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split),
+                      batch_size=batch_size, shuffle=True, num_workers=2)
     # load model
     model = load_model(model_path)
     # initialize attention weight collector
@@ -143,9 +144,6 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
 
         distances.append(((batch.pos[attention_weights.rollout_index[-1][0]] - batch.pos[attention_weights.rollout_index[-1][1]]) ** 2).sum(dim=-1).sqrt())
-
-        if len(attention_weights.edge_index) > 2:
-            break
 
     # compute attention weight scatter indices
     zs_full = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
