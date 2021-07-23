@@ -1,5 +1,6 @@
 from os.path import dirname, join, exists
 import pickle
+import time
 import argparse
 from tqdm import tqdm
 import torch
@@ -14,6 +15,7 @@ import pandas as pd
 import numpy as np
 from moleculekit.molecule import Molecule
 from moleculekit.vmdgraphics import VMDCylinder
+from moleculekit.vmdviewer import VMD, getCurrentViewer
 
 
 num2elem = {
@@ -66,6 +68,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
             batch.edge_index = torch.cat(edge_index, dim=1)
 
         if plot_molecules != 'off':
+            idx_offset = 0
             for mol_idx in batch.batch.unique():
                 rollout_batch = batch.batch[attention_weights.rollout_index[-1][0]]
                 if plot_molecules == 'VMD':
@@ -79,10 +82,16 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                     max_attn = attention_weights.rollout_weights[-1][rollout_batch == mol_idx].max()
                     for idx1, idx2 in attention_weights.rollout_index[-1].T[rollout_batch == mol_idx]:
                         attn_idx = torch.where((attention_weights.rollout_index[-1][0] == idx1) & (attention_weights.rollout_index[-1][1] == idx2))[0]
-                        radius = 0.05 * float(attention_weights.rollout_weights[-1][attn_idx] / max_attn)
-                        if radius > 0:
-                            c = VMDCylinder(mol.coords[idx1].flatten(), mol.coords[idx2].flatten(), radius=radius)
-                    mol.view(style='CPK')
+                        radius = float(attention_weights.rollout_weights[-1][attn_idx] / max_attn)
+                        if radius > 0.25:
+                            VMDCylinder(mol.coords[idx1 - idx_offset].flatten(), mol.coords[idx2 - idx_offset].flatten(), color='red', radius=0.05 * radius)
+                        elif radius < 0:
+                            VMDCylinder(mol.coords[idx1 - idx_offset].flatten(), mol.coords[idx2 - idx_offset].flatten(), color='blue', radius=0.05 * radius)
+                    
+                    viewer = getCurrentViewer()
+                    mol.view(style='CPK', viewerhandle=viewer)
+                    while not viewer.completed():
+                        time.sleep(0.1)
                 elif plot_molecules == 'matplotlib':
                     # visualize using matplotlib
                     fig = plt.figure()
@@ -107,6 +116,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
                     plt.legend()
                     plt.axis('off')
                     plt.show()
+                idx_offset += (batch.batch == mol_idx).sum()
 
         zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
         zs_1.append(batch.z[attention_weights.rollout_index[-1][1]])
