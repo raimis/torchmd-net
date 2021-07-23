@@ -31,12 +31,14 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     torch.set_grad_enabled(False)
 
     # load data
+    print('loading data')
     splits_path = join(dirname(model_path), 'splits.npz')
     assert exists(splits_path), f'Missing splits.npz in {dirname(model_path)}.'
     _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
     data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split),
                       batch_size=batch_size, shuffle=True, num_workers=2)
     # load model
+    print('loading model')
     model = load_model(model_path).to(device)
     # initialize attention weight collector
     attention_weights.create(model.representation_model.num_layers)
@@ -46,7 +48,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     atoms_per_elem = {z: 0 for z in z2idx.keys()}
     distances = []
     # extract attention weights from model
-    for batch in tqdm(data):
+    for batch in tqdm(data, desc='extracting attention weights'):
         model(batch.z.to(device), batch.pos.to(device), batch.batch.to(device))
 
         if batch.edge_index is None:
@@ -144,6 +146,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
 
         distances.append(((batch.pos[attention_weights.rollout_index[-1][0]] - batch.pos[attention_weights.rollout_index[-1][1]]) ** 2).sum(dim=-1).sqrt())
+    print('processing data')
 
     # compute attention weight scatter indices
     zs_full = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
@@ -174,8 +177,10 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     dist = torch.cat(distances)
 
     # save data
+    print('saving data')
     with open(join(dirname(model_path), 'attn_weights.pkl'), 'wb') as f:
         pickle.dump((zs, attn, zs_ref, counts_ref_square, atoms_per_elem, zs_full, attn_full, dist), f)
+    print('done')
 
 
 def visualize(basedir, normalize_attention):
@@ -184,6 +189,7 @@ def visualize(basedir, normalize_attention):
     paths = sorted(glob.glob(join(basedir, '**', 'attn_weights.pkl'), recursive=True))[::-1]
 
     # plot attention weights
+    print(f'creating attention plot with {len(paths)} datasets')
     fig, axes_all = plt.subplots(nrows=len(paths), ncols=4, sharex=False, sharey=True, figsize=(8, 4.8),
                                  gridspec_kw=dict(width_ratios=[0.5, 1, 1, 1], hspace=0))
 
@@ -253,7 +259,8 @@ def visualize(basedir, normalize_attention):
     plt.savefig(join(basedir, 'attn_weights.pdf'), bbox_inches='tight')
 
 
-    for path in paths:
+    for path_idx, path in enumerate(paths):
+        print(f'creating dist-attention plot ({path_idx + 1}/{len(paths)}')
         # load data
         with open(path, 'rb') as f:
             _, _, _, _, _, zs_full, attn_full, dist = pickle.load(f)
@@ -274,6 +281,7 @@ def visualize(basedir, normalize_attention):
         ax.set_title('Attention scores by distance for Hydrogen-Carbon interactions')
         ax.set_xlim(0)
         plt.savefig(join(dirname(path), 'attn-dist.pdf'), bbox_inches='tight')
+    print('done')
 
 
 if __name__ == '__main__':
