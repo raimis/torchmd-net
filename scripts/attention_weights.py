@@ -204,7 +204,7 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset):
 
     # plot attention weights
     print(f'creating attention plot with {len(paths)} datasets')
-    fig, axes_all = plt.subplots(nrows=len(paths), ncols=4, sharex=False, sharey=True, figsize=(8, 4.8),
+    fig, axes_all = plt.subplots(nrows=len(paths), ncols=4, sharex=False, sharey=True, figsize=(8, 2.4 * len(paths)),
                                  gridspec_kw=dict(width_ratios=[0.5, 1, 1, 1], hspace=0), squeeze=False)
 
     for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all[:,1:])):
@@ -217,7 +217,7 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset):
 
         axes_all[dataset_idx,0].axis('off')
         axes_all[dataset_idx,0].text(0.6, 0.5, dset_name, ha='right', va='center',
-                                     transform=axes_all[dataset_idx,0].transAxes, fontsize=15)
+                                     transform=axes_all[dataset_idx,0].transAxes, fontsize=12)
 
         # load data
         if combine_dataset:
