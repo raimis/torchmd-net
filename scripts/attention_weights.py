@@ -190,7 +190,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
 def visualize(basedir, normalize_attention, distance_plots):
     plt.rcParams['mathtext.fontset'] = 'cm'
 
-    paths = sorted(glob.glob(join(basedir, '**', 'attn_weights.pkl'), recursive=True))[::-1]
+    paths = sorted(glob.glob(join(basedir, '**', 'attn_weights.pkl'), recursive=True))
 
     # plot attention weights
     print(f'creating attention plot with {len(paths)} datasets')
