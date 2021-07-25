@@ -150,8 +150,6 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
 
         distances.append(((batch.pos[attention_weights.rollout_index[-1][0]] - batch.pos[attention_weights.rollout_index[-1][1]]) ** 2).sum(dim=-1).sqrt())
         
-        if len(attention_weights.edge_index) > 2:
-            break
     print('processing data')
 
     # compute attention weight scatter indices
