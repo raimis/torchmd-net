@@ -1,5 +1,5 @@
 import os
-from os.path import dirname, join, exists
+from os.path import basename, dirname, join, exists
 import pickle
 import time
 import glob
@@ -187,10 +187,20 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     print('done')
 
 
-def visualize(basedir, normalize_attention, distance_plots):
+def visualize(basedir, normalize_attention, distance_plots, combine_dataset):
     plt.rcParams['mathtext.fontset'] = 'cm'
 
     paths = sorted(glob.glob(join(basedir, '**', 'attn_weights.pkl'), recursive=True))
+    dataset_paths = dict()
+    if combine_dataset:
+        print('combining datasets')
+        for path in paths:
+            dset_name = basename(dirname(path)).split('-')[0]
+            if dset_name in dataset_paths:
+                dataset_paths[dset_name].append(path)
+            else:
+                dataset_paths[dset_name] = [path]
+        paths = dataset_paths
 
     # plot attention weights
     print(f'creating attention plot with {len(paths)} datasets')
@@ -198,15 +208,42 @@ def visualize(basedir, normalize_attention, distance_plots):
                                  gridspec_kw=dict(width_ratios=[0.5, 1, 1, 1], hspace=0), squeeze=False)
 
     for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all[:,1:])):
+        if combine_dataset:
+            dset_name = path
+        else:
+            dset_name = [dset_arg2name[name] if name in dset_arg2name else name[0].upper() + name[1:]
+                        for name in path.split(os.sep)[-2].split('-')[:-1]]
+            dset_name = '\n'.join(dset_name)
+
         axes_all[dataset_idx,0].axis('off')
-        names = [dset_arg2name[name] if name in dset_arg2name else name[0].upper() + name[1:]
-                 for name in path.split(os.sep)[-2].split('-')[:-1]]
-        axes_all[dataset_idx,0].text(0.6, 0.5, '\n'.join(names), ha='right', va='center',
+        axes_all[dataset_idx,0].text(0.6, 0.5, dset_name, ha='right', va='center',
                                      transform=axes_all[dataset_idx,0].transAxes, fontsize=15)
 
         # load data
-        with open(path, 'rb') as f:
-            zs, weights, zs_ref, probs_ref, atoms_per_elem, _, _, _ = pickle.load(f)
+        if combine_dataset:
+            weights_counts = torch.zeros(len(num2elem), len(num2elem), dtype=torch.int)
+            weights = torch.zeros(len(num2elem), len(num2elem))
+            probs_ref_counts = weights_counts.clone()
+            probs_ref = weights.clone()
+            atoms_per_elem = dict()
+            for p in paths[path]:
+                with open(p, 'rb') as f:
+                    zs, _weights, _, _probs_ref, _atoms_per_elem, _, _, _ = pickle.load(f)
+                weights_counts += (~_weights.isnan()).int()
+                weights += _weights.nan_to_num()
+                probs_ref_counts += (~_probs_ref.isnan()).int()
+                probs_ref += _probs_ref.nan_to_num()
+                for elem in _atoms_per_elem.keys():
+                    if elem in atoms_per_elem:
+                        atoms_per_elem[elem] += _atoms_per_elem[elem]
+                    else:
+                        atoms_per_elem[elem] = _atoms_per_elem[elem]
+            weights /= weights_counts
+            probs_ref /= probs_ref_counts
+        else:
+            with open(path, 'rb') as f:
+                zs, weights, _, probs_ref, atoms_per_elem, _, _, _ = pickle.load(f)
+
         elements = num2elem.values()
 
         # subplot 0
@@ -301,6 +338,7 @@ if __name__ == '__main__':
     parser.add_argument('--plot-molecules', type=str, default='off', choices=['off', 'VMD', 'matplotlib'], help='The visualization system for molecules')
     parser.add_argument('--distance-plots', type=bool, help='If True, create distance-attention plots')
     parser.add_argument('--normalize-attention', type=bool, help='Whether to normalize the attention scores such that each row adds up to one')
+    parser.add_argument('--combine-dataset', type=bool, help='Whether to combine all data from the same dataset')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the extraction on')
 
     args = parser.parse_args()
@@ -309,4 +347,4 @@ if __name__ == '__main__':
         extract_data(args.model_path, args.dataset_path, args.dataset_name,
                      args.dataset_arg, args.batch_size, args.plot_molecules,
                      args.device)
-    visualize(dirname(dirname(args.model_path)), args.normalize_attention, args.distance_plots)
+    visualize(dirname(dirname(args.model_path)), args.normalize_attention, args.distance_plots, args.combine_dataset)
