@@ -23,6 +23,9 @@ from moleculekit.vmdviewer import getCurrentViewer
 num2elem = {1: 'H', 6: 'C', 7: 'N', 8: 'O', 9: 'F'}
 z2idx = {1: 0, 6: 1, 7: 2, 8: 3, 9: 4}
 n_elements = len(num2elem)
+dset_arg2name = {
+    'energy_U0': '$U_0$'
+}
 
 torch.manual_seed(1234)
 
@@ -146,6 +149,9 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
 
         distances.append(((batch.pos[attention_weights.rollout_index[-1][0]] - batch.pos[attention_weights.rollout_index[-1][1]]) ** 2).sum(dim=-1).sqrt())
+        
+        if len(attention_weights.edge_index) > 2:
+            break
     print('processing data')
 
     # compute attention weight scatter indices
@@ -191,11 +197,13 @@ def visualize(basedir, normalize_attention):
     # plot attention weights
     print(f'creating attention plot with {len(paths)} datasets')
     fig, axes_all = plt.subplots(nrows=len(paths), ncols=4, sharex=False, sharey=True, figsize=(8, 4.8),
-                                 gridspec_kw=dict(width_ratios=[0.5, 1, 1, 1], hspace=0))
+                                 gridspec_kw=dict(width_ratios=[0.5, 1, 1, 1], hspace=0), squeeze=False)
 
     for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all[:,1:])):
         axes_all[dataset_idx,0].axis('off')
-        axes_all[dataset_idx,0].text(0.6, 0.5, path.split(os.sep)[-2].split('-')[0], ha='right', va='center',
+        names = [dset_arg2name[name] if name in dset_arg2name else name[0].upper() + name[1:]
+                 for name in path.split(os.sep)[-2].split('-')[:-1]]
+        axes_all[dataset_idx,0].text(0.6, 0.5, '\n'.join(names), ha='right', va='center',
                                      transform=axes_all[dataset_idx,0].transAxes, fontsize=15)
 
         # load data
