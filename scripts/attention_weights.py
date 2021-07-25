@@ -187,7 +187,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     print('done')
 
 
-def visualize(basedir, normalize_attention):
+def visualize(basedir, normalize_attention, distance_plots):
     plt.rcParams['mathtext.fontset'] = 'cm'
 
     paths = sorted(glob.glob(join(basedir, '**', 'attn_weights.pkl'), recursive=True))[::-1]
@@ -264,29 +264,29 @@ def visualize(basedir, normalize_attention):
 
     plt.savefig(join(basedir, 'attn_weights.pdf'), bbox_inches='tight')
 
+    if distance_plots:
+        for path_idx, path in enumerate(paths):
+            print(f'creating dist-attention plot ({path_idx + 1}/{len(paths)})')
+            # load data
+            with open(path, 'rb') as f:
+                _, _, _, _, _, zs_full, attn_full, dist = pickle.load(f)
 
-    for path_idx, path in enumerate(paths):
-        print(f'creating dist-attention plot ({path_idx + 1}/{len(paths)})')
-        # load data
-        with open(path, 'rb') as f:
-            _, _, _, _, _, zs_full, attn_full, dist = pickle.load(f)
-
-        # visualize attention by distance
-        z1, z2 = 1, 6
-        ma_width = 1000
-        mask = ((zs_full[0] == z1) & (zs_full[1] == z2)) | ((zs_full[0] == z2) & (zs_full[1] == z1))
-        fig, ax = plt.subplots()
-        ax.grid(True)
-        ax.hist(dist[mask].numpy(), bins=70, color='C1', alpha=0.3)
-        ax.set_ylabel('Number of interactions', color='C1')
-        ax = ax.twinx()
-        averaged = pd.Series(attn_full[mask][dist[mask].argsort()]).rolling(ma_width).mean().shift(-ma_width).values
-        ax.scatter(dist[mask].sort().values, averaged, marker='.', color='C0')
-        ax.set_xlabel('Distance ($\AA$)')
-        ax.set_ylabel('Attention score', color='C0')
-        ax.set_title('Attention scores by distance for Hydrogen-Carbon interactions')
-        ax.set_xlim(0)
-        plt.savefig(join(dirname(path), 'attn-dist.pdf'), bbox_inches='tight')
+            # visualize attention by distance
+            z1, z2 = 1, 6
+            ma_width = 1000
+            mask = ((zs_full[0] == z1) & (zs_full[1] == z2)) | ((zs_full[0] == z2) & (zs_full[1] == z1))
+            fig, ax = plt.subplots()
+            ax.grid(True)
+            ax.hist(dist[mask].numpy(), bins=70, color='C1', alpha=0.3)
+            ax.set_ylabel('Number of interactions', color='C1')
+            ax = ax.twinx()
+            averaged = pd.Series(attn_full[mask][dist[mask].argsort()]).rolling(ma_width).mean().shift(-ma_width).values
+            ax.scatter(dist[mask].sort().values, averaged, marker='.', color='C0')
+            ax.set_xlabel('Distance ($\AA$)')
+            ax.set_ylabel('Attention score', color='C0')
+            ax.set_title('Attention scores by distance for Hydrogen-Carbon interactions')
+            ax.set_xlim(0)
+            plt.savefig(join(dirname(path), 'attn-dist.pdf'), bbox_inches='tight')
     print('done')
 
 
@@ -298,7 +298,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset-name', type=str, choices=datasets.__all__, help='Name of the dataset')
     parser.add_argument('--dataset-arg', type=str, help='Additional argument to the dataset class (e.g. target property for QM9)')
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size for the attention weight extraction')
-    parser.add_argument('--plot-molecules', type=str, default='off', choices=['off', 'VMD', 'matplotlib'], help='If True, draws all processed molecules with associated attention weights during extraction')
+    parser.add_argument('--plot-molecules', type=str, default='off', choices=['off', 'VMD', 'matplotlib'], help='The visualization system for molecules')
+    parser.add_argument('--distance-plots', type=bool, help='If True, create distance-attention plots')
     parser.add_argument('--normalize-attention', type=bool, help='Whether to normalize the attention scores such that each row adds up to one')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the extraction on')
 
@@ -308,4 +309,4 @@ if __name__ == '__main__':
         extract_data(args.model_path, args.dataset_path, args.dataset_name,
                      args.dataset_arg, args.batch_size, args.plot_molecules,
                      args.device)
-    visualize(dirname(dirname(args.model_path)), args.normalize_attention)
+    visualize(dirname(dirname(args.model_path)), args.normalize_attention, args.distance_plots)
