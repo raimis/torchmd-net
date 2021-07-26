@@ -24,7 +24,9 @@ num2elem = {1: 'H', 6: 'C', 7: 'N', 8: 'O', 9: 'F'}
 z2idx = {1: 0, 6: 1, 7: 2, 8: 3, 9: 4}
 n_elements = len(num2elem)
 dset_arg2name = {
-    'energy_U0': '$U_0$'
+    'energy_U0': '$U_0$',
+    'salicylic_acid': 'Salicylic Acid',
+    'malonaldehyde': 'Malondialdehyde'
 }
 
 torch.manual_seed(1234)
@@ -257,7 +259,7 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset):
         axes[0].set_ylabel('$z_i$', fontsize=15)
         if dataset_idx == 0:
             axes[0].set_title('Bond Probabilities', fontsize=12)
-            axes[0].tick_params(labelleft=True, labelbottom=False)
+            axes[0].tick_params(labelleft=True)
         else:
             axes[0].tick_params(labelleft=True, top=True)
         if dataset_idx == len(paths) - 1:
@@ -276,7 +278,6 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset):
         )
         if dataset_idx == 0:
             axes[1].set_title('Attention Scores', fontsize=12)
-            axes[1].tick_params(labelbottom=False)
         else:
             axes[1].tick_params(top=True)
         if dataset_idx == len(paths) - 1:
