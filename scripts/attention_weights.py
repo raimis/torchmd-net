@@ -151,7 +151,7 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
 
         distances.append(((batch.pos[attention_weights.rollout_index[-1][0]] - batch.pos[attention_weights.rollout_index[-1][1]]) ** 2).sum(dim=-1).sqrt())
-        
+
     print('processing data')
 
     # compute attention weight scatter indices
@@ -277,7 +277,7 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset, ign
         # subplot 1
         if normalize_attention:
             mask = ~weights.isnan().all(dim=1)
-            weights[mask] = weights[mask] / weights[mask].nansum(dim=1, keepdim=True)
+            weights[mask] = weights[mask] / weights[mask].nansum(dim=1, keepdim=True).abs()
         axes[1].imshow(weights, cmap='Blues')
         axes[1].set(
             xticks=range(len(elements)),
