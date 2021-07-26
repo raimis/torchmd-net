@@ -224,6 +224,8 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset, ign
         axes_all[dataset_idx,0].text(0.6, 0.5, dset_name, ha='right', va='center',
                                      transform=axes_all[dataset_idx,0].transAxes, fontsize=12)
 
+        elements = num2elem.values()
+
         # load data
         if combine_dataset:
             weights_counts = torch.zeros(len(num2elem), len(num2elem), dtype=torch.int)
@@ -249,7 +251,11 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset, ign
             with open(path, 'rb') as f:
                 zs, weights, _, probs_ref, atoms_per_elem, _, _, _ = pickle.load(f)
 
-        elements = num2elem.values()
+            n_elements = len(elements)
+            zs = zs[:n_elements]
+            weights = weights[:n_elements,:n_elements]
+            probs_ref = probs_ref[:n_elements,:n_elements]
+            atoms_per_elem = {k: v for k, v in atoms_per_elem.items() if k in num2elem.keys()}
 
         # subplot 0
         axes[0].imshow(probs_ref, cmap='Reds', vmin=0, vmax=1)
