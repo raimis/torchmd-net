@@ -189,10 +189,13 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     print('done')
 
 
-def visualize(basedir, normalize_attention, distance_plots, combine_dataset):
+def visualize(basedir, normalize_attention, distance_plots, combine_dataset, ignore_datasets=[]):
     plt.rcParams['mathtext.fontset'] = 'cm'
 
     paths = sorted(glob.glob(join(basedir, '**', 'attn_weights.pkl'), recursive=True))
+    ignore_datasets = [name.lower() for name in ignore_datasets]
+    paths = [path for path in paths if basename(dirname(path)).split('-')[0].lower() not in ignore_datasets]
+
     dataset_paths = dict()
     if combine_dataset:
         print('combining datasets')
@@ -340,6 +343,7 @@ if __name__ == '__main__':
     parser.add_argument('--distance-plots', type=bool, help='If True, create distance-attention plots')
     parser.add_argument('--normalize-attention', type=bool, help='Whether to normalize the attention scores such that each row adds up to one')
     parser.add_argument('--combine-dataset', type=bool, help='Whether to combine all data from the same dataset')
+    parser.add_argument('--ignore-datasets', type=str, default='', help='Comma separated names of datasets not to include in the plots')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the extraction on')
 
     args = parser.parse_args()
@@ -348,4 +352,6 @@ if __name__ == '__main__':
         extract_data(args.model_path, args.dataset_path, args.dataset_name,
                      args.dataset_arg, args.batch_size, args.plot_molecules,
                      args.device)
-    visualize(dirname(dirname(args.model_path)), args.normalize_attention, args.distance_plots, args.combine_dataset)
+
+    visualize(dirname(dirname(args.model_path)), args.normalize_attention,
+              args.distance_plots, args.combine_dataset, args.ignore_datasets.split(','))
