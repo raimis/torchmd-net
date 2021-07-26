@@ -289,7 +289,7 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset, ign
         # subplot 2
         axes[2].barh(range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color='forestgreen')
         for i, v in enumerate(atoms_per_elem.values()):
-            is_max = v >= max(atoms_per_elem.values()) * 0.85
+            is_max = v >= max(atoms_per_elem.values()) * 0.70
             offset = max(atoms_per_elem.values()) * 0.025
             axes[2].text(v - offset if is_max else v + offset, i, str(v), va='center', ha='right' if is_max else 'left', color='1' if is_max else '0')
         axes[2].set_box_aspect(1)
