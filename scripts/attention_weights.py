@@ -228,7 +228,7 @@ def visualize(basedir, normalize_attention, distance_plots, combine_dataset):
             probs_ref_counts = weights_counts.clone()
             probs_ref = weights.clone()
             atoms_per_elem = dict()
-            for p in paths[path]:
+            for p in tqdm(paths[path], desc=f'combining data for {path}'):
                 with open(p, 'rb') as f:
                     zs, _weights, _, _probs_ref, _atoms_per_elem, _, _, _ = pickle.load(f)
                 weights_counts += (~_weights.isnan()).int()
