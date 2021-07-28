@@ -38,9 +38,13 @@ def extract_data(model_path, dataset_path, dataset_name, dataset_arg, batch_size
     # load data
     print('loading data')
     splits_path = join(dirname(model_path), 'splits.npz')
-    assert exists(splits_path), f'Missing splits.npz in {dirname(model_path)}.'
-    _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
-    data = DataLoader(Subset(getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg), test_split),
+    data = getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg)
+    if exists(splits_path):
+        _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
+    else:
+        print('Warning: couldn\'t find splits.npz, using whole dataset')
+        _, _, test_split = make_splits(len(data), 0, 0, None, 10)
+    data = DataLoader(Subset(data, test_split),
                       batch_size=batch_size, shuffle=True, num_workers=2)
     # load model
     print('loading model')
