@@ -96,10 +96,11 @@ def create_model(args, prior_model=None, mean=None, std=None):
     return model
 
 
-def load_model(filepath, args=None, device="cpu"):
+def load_model(filepath, args=None, device="cpu", **kwargs):
     ckpt = torch.load(filepath, map_location="cpu")
     if args is None:
         args = ckpt["hyper_parameters"]
+    args.update(kwargs)
 
     model = create_model(args)
 

@@ -47,6 +47,7 @@ def extract_data(
     print("loading data")
     splits_path = join(dirname(model_path), "splits.npz")
     data = getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg)
+    has_dy = hasattr(data[0], "dy")
     if exists(splits_path):
         _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
     else:
@@ -55,19 +56,33 @@ def extract_data(
     data = DataLoader(
         Subset(data, test_split), batch_size=batch_size, shuffle=True, num_workers=2
     )
+
     # load model
     print("loading model")
-    model = load_model(model_path).to(device)
+    model = load_model(model_path, device=device, derivative=has_dy).eval()
     # initialize attention weight collector
     attention_weights.create(model.representation_model.num_layers)
 
+    losses_y = []
+    losses_dy = []
     zs_0, zs_1 = [], []
     zs_0_ref, zs_1_ref = [], []
     atoms_per_elem = {z: 0 for z in z2idx.keys()}
     distances = []
     # extract attention weights from model
     for batch in tqdm(data, desc="extracting attention weights"):
-        model(batch.z.to(device), batch.pos.to(device), batch.batch.to(device))
+        if model.derivative:
+            torch.set_grad_enabled(True)
+        pred, deriv = model(
+            batch.z.to(device), batch.pos.to(device), batch.batch.to(device)
+        )
+        torch.set_grad_enabled(False)
+
+        losses_y.append(torch.nn.functional.l1_loss(pred.detach().cpu(), batch.y))
+        if deriv is not None and hasattr(batch, "dy"):
+            losses_dy.append(
+                torch.nn.functional.l1_loss(deriv.detach().cpu(), batch.dy)
+            )
 
         if batch.edge_index is None:
             # guess bonds

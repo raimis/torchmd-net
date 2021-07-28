@@ -24,7 +24,7 @@ def create(layers):
 
 def append_weights(w):
     global num_layers, weights, edge_index, _current_layer
-    weights[_current_layer].append(w.cpu())
+    weights[_current_layer].append(w.detach().cpu())
     assert len(weights[_current_layer]) == len(
         edge_index
     ), "Mismatch between stored attention weights and index"
@@ -69,6 +69,6 @@ def _rollout():
 
 def store_idx(idx, dist=None):
     global edge_index, distances
-    edge_index.append(idx.cpu())
+    edge_index.append(idx.detach().cpu())
     if dist is not None:
-        distances.append(dist.cpu())
+        distances.append(dist.detach().cpu())
