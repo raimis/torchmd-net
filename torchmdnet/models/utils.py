@@ -2,7 +2,8 @@ import math
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch_geometric.nn import radius_graph, MessagePassing
+from torch_geometric.nn import MessagePassing
+from torch_cluster import radius_graph
 
 
 def visualize_basis(basis_type, num_rbf=50, cutoff_lower=0, cutoff_upper=5):
@@ -22,20 +23,23 @@ def visualize_basis(basis_type, num_rbf=50, cutoff_lower=0, cutoff_upper=5):
     """
     import matplotlib.pyplot as plt
 
-    distances = torch.linspace(cutoff_lower-1, cutoff_upper+1, 1000)
-    basis_kwargs = {'num_rbf':num_rbf, 'cutoff_lower':cutoff_lower, 'cutoff_upper':cutoff_upper}
+    distances = torch.linspace(cutoff_lower - 1, cutoff_upper + 1, 1000)
+    basis_kwargs = {
+        "num_rbf": num_rbf,
+        "cutoff_lower": cutoff_lower,
+        "cutoff_upper": cutoff_upper,
+    }
     basis_expansion = rbf_class_mapping[basis_type](**basis_kwargs)
     expanded_distances = basis_expansion(distances)
 
     for i in range(expanded_distances.shape[-1]):
-        plt.plot(distances.numpy(), expanded_distances[:,i].detach().numpy())
+        plt.plot(distances.numpy(), expanded_distances[:, i].detach().numpy())
     plt.show()
 
 
 class NeighborEmbedding(MessagePassing):
-    def __init__(self, hidden_channels, num_rbf, cutoff_lower,
-                 cutoff_upper, max_z=100):
-        super(NeighborEmbedding, self).__init__(aggr='add')
+    def __init__(self, hidden_channels, num_rbf, cutoff_lower, cutoff_upper, max_z=100):
+        super(NeighborEmbedding, self).__init__(aggr="add")
         self.embedding = nn.Embedding(max_z, hidden_channels)
         self.distance_proj = nn.Linear(num_rbf, hidden_channels)
         self.combine = nn.Linear(hidden_channels * 2, hidden_channels)
@@ -54,7 +58,7 @@ class NeighborEmbedding(MessagePassing):
         # remove self loops
         mask = edge_index[0] != edge_index[1]
         if not mask.all():
-            edge_index = edge_index[:,mask]
+            edge_index = edge_index[:, mask]
             edge_weight = edge_weight[mask]
             edge_attr = edge_attr[mask]
 
@@ -62,7 +66,8 @@ class NeighborEmbedding(MessagePassing):
         W = self.distance_proj(edge_attr) * C.view(-1, 1)
 
         x_neighbors = self.embedding(z)
-        x_neighbors = self.propagate(edge_index, x=x_neighbors, W=W)
+        # propagate_type: (x: Tensor, W: Tensor)
+        x_neighbors = self.propagate(edge_index, x=x_neighbors, W=W, size=None)
         x_neighbors = self.combine(torch.cat([x, x_neighbors], dim=1))
         return x_neighbors
 
@@ -80,11 +85,11 @@ class GaussianSmearing(nn.Module):
 
         offset, coeff = self._initial_params()
         if trainable:
-            self.register_parameter('coeff', nn.Parameter(coeff))
-            self.register_parameter('offset', nn.Parameter(offset))
+            self.register_parameter("coeff", nn.Parameter(coeff))
+            self.register_parameter("offset", nn.Parameter(offset))
         else:
-            self.register_buffer('coeff', coeff)
-            self.register_buffer('offset', offset)
+            self.register_buffer("coeff", coeff)
+            self.register_buffer("offset", offset)
 
     def _initial_params(self):
         offset = torch.linspace(self.cutoff_lower, self.cutoff_upper, self.num_rbf)
@@ -110,22 +115,26 @@ class ExpNormalSmearing(nn.Module):
         self.trainable = trainable
 
         self.cutoff_fn = CosineCutoff(0, cutoff_upper)
-        self.alpha = 5.0/(cutoff_upper - cutoff_lower)
+        self.alpha = 5.0 / (cutoff_upper - cutoff_lower)
 
         means, betas = self._initial_params()
         if trainable:
-            self.register_parameter('means', nn.Parameter(means))
-            self.register_parameter('betas', nn.Parameter(betas))
+            self.register_parameter("means", nn.Parameter(means))
+            self.register_parameter("betas", nn.Parameter(betas))
         else:
-            self.register_buffer('means', means)
-            self.register_buffer('betas', betas)
+            self.register_buffer("means", means)
+            self.register_buffer("betas", betas)
 
     def _initial_params(self):
         # initialize means and betas according to the default values in PhysNet
         # https://pubs.acs.org/doi/10.1021/acs.jctc.9b00181
-        start_value = torch.exp(torch.scalar_tensor(-self.cutoff_upper + self.cutoff_lower))
+        start_value = torch.exp(
+            torch.scalar_tensor(-self.cutoff_upper + self.cutoff_lower)
+        )
         means = torch.linspace(start_value, 1, self.num_rbf)
-        betas = torch.tensor([(2 / self.num_rbf * (1 - start_value)) ** -2] * self.num_rbf)
+        betas = torch.tensor(
+            [(2 / self.num_rbf * (1 - start_value)) ** -2] * self.num_rbf
+        )
         return means, betas
 
     def reset_parameters(self):
@@ -135,7 +144,10 @@ class ExpNormalSmearing(nn.Module):
 
     def forward(self, dist):
         dist = dist.unsqueeze(-1)
-        return self.cutoff_fn(dist) * torch.exp(-self.betas * (torch.exp(self.alpha*(-dist + self.cutoff_lower)) - self.means) ** 2)
+        return self.cutoff_fn(dist) * torch.exp(
+            -self.betas
+            * (torch.exp(self.alpha * (-dist + self.cutoff_lower)) - self.means) ** 2
+        )
 
 
 class ShiftedSoftplus(nn.Module):
@@ -155,7 +167,18 @@ class CosineCutoff(nn.Module):
 
     def forward(self, distances):
         if self.cutoff_lower > 0:
-            cutoffs = 0.5 * (torch.cos(math.pi * (2 * (distances - self.cutoff_lower) / (self.cutoff_upper - self.cutoff_lower) + 1.0)) + 1.0)
+            cutoffs = 0.5 * (
+                torch.cos(
+                    math.pi
+                    * (
+                        2
+                        * (distances - self.cutoff_lower)
+                        / (self.cutoff_upper - self.cutoff_lower)
+                        + 1.0
+                    )
+                )
+                + 1.0
+            )
             # remove contributions below the cutoff radius
             cutoffs = cutoffs * (distances < self.cutoff_upper).float()
             cutoffs = cutoffs * (distances > self.cutoff_lower).float()
@@ -168,7 +191,14 @@ class CosineCutoff(nn.Module):
 
 
 class Distance(nn.Module):
-    def __init__(self, cutoff_lower, cutoff_upper, max_num_neighbors=32, return_vecs=False, loop=False):
+    def __init__(
+        self,
+        cutoff_lower,
+        cutoff_upper,
+        max_num_neighbors=32,
+        return_vecs=False,
+        loop=False,
+    ):
         super(Distance, self).__init__()
         self.cutoff_lower = cutoff_lower
         self.cutoff_upper = cutoff_upper
@@ -177,8 +207,13 @@ class Distance(nn.Module):
         self.loop = loop
 
     def forward(self, pos, batch):
-        edge_index = radius_graph(pos, r=self.cutoff_upper, batch=batch, loop=self.loop,
-                                  max_num_neighbors=self.max_num_neighbors)
+        edge_index = radius_graph(
+            pos,
+            r=self.cutoff_upper,
+            batch=batch,
+            loop=self.loop,
+            max_num_neighbors=self.max_num_neighbors,
+        )
         edge_vec = pos[edge_index[0]] - pos[edge_index[1]]
 
         if self.loop:
@@ -187,18 +222,19 @@ class Distance(nn.Module):
             # NOTE: might influence force predictions as self loop gradients are ignored
             mask = edge_index[0] != edge_index[1]
             edge_weight = torch.zeros(edge_vec.size(0), device=edge_vec.device)
-            edge_weight[mask] = edge_vec[mask].norm(dim=-1)
+            edge_weight[mask] = torch.norm(edge_vec[mask], dim=-1)
         else:
-            edge_weight = edge_vec.norm(dim=-1)
+            edge_weight = torch.norm(edge_vec, dim=-1)
 
         lower_mask = edge_weight >= self.cutoff_lower
-        edge_index = edge_index[:,lower_mask]
+        edge_index = edge_index[:, lower_mask]
         edge_weight = edge_weight[lower_mask]
 
         if self.return_vecs:
             edge_vec = edge_vec[lower_mask]
             return edge_index, edge_weight, edge_vec
-        return edge_index, edge_weight
+        # TODO: return only `edge_index` and `edge_weight` once Union typing works with TorchScript (https://github.com/pytorch/pytorch/pull/53180)
+        return edge_index, edge_weight, None
 
 
 class GatedEquivariantBlock(nn.Module):
@@ -206,12 +242,16 @@ class GatedEquivariantBlock(nn.Module):
     Equivariant message passing for the prediction of tensorial properties and molecular spectra
     """
 
-    def __init__(self, hidden_channels, out_channels, intermediate_channels=None,
-                 activation='silu', scalar_activation=False):
+    def __init__(
+        self,
+        hidden_channels,
+        out_channels,
+        intermediate_channels=None,
+        activation="silu",
+        scalar_activation=False,
+    ):
         super(GatedEquivariantBlock, self).__init__()
-        self.hidden_channels = hidden_channels
         self.out_channels = out_channels
-        self.scalar_activation = scalar_activation
 
         if intermediate_channels is None:
             intermediate_channels = hidden_channels
@@ -223,11 +263,10 @@ class GatedEquivariantBlock(nn.Module):
         self.update_net = nn.Sequential(
             nn.Linear(hidden_channels * 2, intermediate_channels),
             act_class(),
-            nn.Linear(intermediate_channels, out_channels * 2)
+            nn.Linear(intermediate_channels, out_channels * 2),
         )
 
-        if scalar_activation:
-            self.act = act_class()
+        self.act = act_class() if scalar_activation else None
 
     def reset_parameters(self):
         nn.init.xavier_uniform_(self.vec1_proj.weight)
@@ -245,19 +284,16 @@ class GatedEquivariantBlock(nn.Module):
         x, v = torch.split(self.update_net(x), self.out_channels, dim=-1)
         v = v.unsqueeze(1) * vec2
 
-        if self.scalar_activation:
+        if self.act is not None:
             x = self.act(x)
         return x, v
 
 
-rbf_class_mapping = {
-    'gauss': GaussianSmearing,
-    'expnorm': ExpNormalSmearing
-}
+rbf_class_mapping = {"gauss": GaussianSmearing, "expnorm": ExpNormalSmearing}
 
 act_class_mapping = {
-    'ssp': ShiftedSoftplus,
-    'silu': nn.SiLU,
-    'tanh': nn.Tanh,
-    'sigmoid': nn.Sigmoid
+    "ssp": ShiftedSoftplus,
+    "silu": nn.SiLU,
+    "tanh": nn.Tanh,
+    "sigmoid": nn.Sigmoid,
 }

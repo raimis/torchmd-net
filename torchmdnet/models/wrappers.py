@@ -12,6 +12,7 @@ class BaseWrapper(nn.Module, metaclass=ABCMeta):
     features`v`. Wrappers that are applied after REDUCE should only
     return the model's output.
     """
+
     def __init__(self, model):
         super(BaseWrapper, self).__init__()
         self.model = model
@@ -30,28 +31,21 @@ class AtomFilter(BaseWrapper):
         self.remove_threshold = remove_threshold
 
     def forward(self, z, pos, batch=None):
-        output = self.model(z, pos, batch=batch)
-
-        has_vector_features = len(output) == 5
-        if has_vector_features:
-            x, v, z, pos, batch = output
-        else:
-            x, z, pos, batch = output
+        x, v, z, pos, batch = self.model(z, pos, batch=batch)
 
         n_samples = len(batch.unique())
 
         # drop atoms according to the filter
         atom_mask = z > self.remove_threshold
         x = x[atom_mask]
-        if has_vector_features:
+        if v is not None:
             v = v[atom_mask]
         z = z[atom_mask]
         pos = pos[atom_mask]
         batch = batch[atom_mask]
 
-        assert len(batch.unique()) == n_samples,\
-            ('Some samples were completely filtered out by the atom filter. '
-             f'Make sure that at least one atom per sample exists with Z > {self.remove_threshold}.')
-        if has_vector_features:
-            return x, v, z, pos, batch
-        return x, z, pos, batch
+        assert len(batch.unique()) == n_samples, (
+            "Some samples were completely filtered out by the atom filter. "
+            f"Make sure that at least one atom per sample exists with Z > {self.remove_threshold}."
+        )
+        return x, v, z, pos, batch

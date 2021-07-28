@@ -1,9 +1,15 @@
+from typing import Optional, Tuple
 import torch
 from torch import nn
 from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter
-from torchmdnet.models.utils import (NeighborEmbedding, CosineCutoff, Distance,
-                                     rbf_class_mapping, act_class_mapping)
+from torchmdnet.models.utils import (
+    NeighborEmbedding,
+    CosineCutoff,
+    Distance,
+    rbf_class_mapping,
+    act_class_mapping,
+)
 from torchmdnet import attention_weights
 
 
@@ -46,17 +52,34 @@ class TorchMD_ET(nn.Module):
             (default: :obj:`32`)
     """
 
-    def __init__(self, hidden_channels=128, num_layers=6, num_rbf=50, rbf_type='expnorm',
-                 trainable_rbf=True, activation='silu', attn_activation='silu', neighbor_embedding=True,
-                 num_heads=8, distance_influence='both', cutoff_lower=0.0, cutoff_upper=5.0, max_z=100,
-                 max_num_neighbors=32):
+    def __init__(
+        self,
+        hidden_channels=128,
+        num_layers=6,
+        num_rbf=50,
+        rbf_type="expnorm",
+        trainable_rbf=True,
+        activation="silu",
+        attn_activation="silu",
+        neighbor_embedding=True,
+        num_heads=8,
+        distance_influence="both",
+        cutoff_lower=0.0,
+        cutoff_upper=5.0,
+        max_z=100,
+        max_num_neighbors=32,
+    ):
         super(TorchMD_ET, self).__init__()
 
-        assert distance_influence in ['keys', 'values', 'both', 'none']
-        assert rbf_type in rbf_class_mapping, (f'Unknown RBF type "{rbf_type}". '
-                                               f'Choose from {", ".join(rbf_class_mapping.keys())}.')
-        assert activation in act_class_mapping, (f'Unknown activation function "{activation}". '
-                                                 f'Choose from {", ".join(act_class_mapping.keys())}.')
+        assert distance_influence in ["keys", "values", "both", "none"]
+        assert rbf_type in rbf_class_mapping, (
+            f'Unknown RBF type "{rbf_type}". '
+            f'Choose from {", ".join(rbf_class_mapping.keys())}.'
+        )
+        assert activation in act_class_mapping, (
+            f'Unknown activation function "{activation}". '
+            f'Choose from {", ".join(act_class_mapping.keys())}.'
+        )
 
         self.hidden_channels = hidden_channels
         self.num_layers = num_layers
@@ -77,19 +100,36 @@ class TorchMD_ET(nn.Module):
 
         self.embedding = nn.Embedding(self.max_z, hidden_channels)
 
-        self.distance = Distance(cutoff_lower, cutoff_upper, max_num_neighbors=max_num_neighbors,
-                                 return_vecs=True, loop=True)
+        self.distance = Distance(
+            cutoff_lower,
+            cutoff_upper,
+            max_num_neighbors=max_num_neighbors,
+            return_vecs=True,
+            loop=True,
+        )
         self.distance_expansion = rbf_class_mapping[rbf_type](
             cutoff_lower, cutoff_upper, num_rbf, trainable_rbf
         )
-        self.neighbor_embedding = NeighborEmbedding(
-            hidden_channels, num_rbf, cutoff_lower, cutoff_upper, self.max_z
-        ) if neighbor_embedding else None
+        self.neighbor_embedding = (
+            NeighborEmbedding(
+                hidden_channels, num_rbf, cutoff_lower, cutoff_upper, self.max_z
+            ).jittable()
+            if neighbor_embedding
+            else None
+        )
 
         self.attention_layers = nn.ModuleList()
         for _ in range(num_layers):
-            layer = EquivariantMultiHeadAttention(hidden_channels, num_rbf, distance_influence, num_heads,
-                                                  act_class, attn_act_class, cutoff_lower, cutoff_upper)
+            layer = EquivariantMultiHeadAttention(
+                hidden_channels,
+                num_rbf,
+                distance_influence,
+                num_heads,
+                act_class,
+                attn_act_class,
+                cutoff_lower,
+                cutoff_upper,
+            ).jittable()
             self.attention_layers.append(layer)
 
         self.out_norm = nn.LayerNorm(hidden_channels)
@@ -105,15 +145,19 @@ class TorchMD_ET(nn.Module):
             attn.reset_parameters()
         self.out_norm.reset_parameters()
 
-    def forward(self, z, pos, batch=None):
+    def forward(self, z, pos, batch):
         x = self.embedding(z)
 
         edge_index, edge_weight, edge_vec = self.distance(pos, batch)
+        assert (
+            edge_vec is not None
+        ), "Distance module did not return directional information"
+
         edge_attr = self.distance_expansion(edge_weight)
         mask = edge_index[0] != edge_index[1]
-        edge_vec[mask] = edge_vec[mask] / edge_vec[mask].norm(dim=1).unsqueeze(1)
+        edge_vec[mask] = edge_vec[mask] / torch.norm(edge_vec[mask], dim=1).unsqueeze(1)
 
-        if self.neighbor_embedding:
+        if self.neighbor_embedding is not None:
             x = self.neighbor_embedding(z, x, edge_index, edge_weight, edge_attr)
 
         vec = torch.zeros(x.size(0), 3, x.size(1), device=x.device)
@@ -130,28 +174,41 @@ class TorchMD_ET(nn.Module):
         return x, vec, z, pos, batch
 
     def __repr__(self):
-        return (f'{self.__class__.__name__}('
-                f'hidden_channels={self.hidden_channels}, '
-                f'num_layers={self.num_layers}, '
-                f'num_rbf={self.num_rbf}, '
-                f'rbf_type={self.rbf_type}, '
-                f'trainable_rbf={self.trainable_rbf}, '
-                f'activation={self.activation}, '
-                f'attn_activation={self.attn_activation}, '
-                f'neighbor_embedding={self.neighbor_embedding}, '
-                f'num_heads={self.num_heads}, '
-                f'distance_influence={self.distance_influence}, '
-                f'cutoff_lower={self.cutoff_lower}, '
-                f'cutoff_upper={self.cutoff_upper})')
+        return (
+            f"{self.__class__.__name__}("
+            f"hidden_channels={self.hidden_channels}, "
+            f"num_layers={self.num_layers}, "
+            f"num_rbf={self.num_rbf}, "
+            f"rbf_type={self.rbf_type}, "
+            f"trainable_rbf={self.trainable_rbf}, "
+            f"activation={self.activation}, "
+            f"attn_activation={self.attn_activation}, "
+            f"neighbor_embedding={self.neighbor_embedding}, "
+            f"num_heads={self.num_heads}, "
+            f"distance_influence={self.distance_influence}, "
+            f"cutoff_lower={self.cutoff_lower}, "
+            f"cutoff_upper={self.cutoff_upper})"
+        )
 
 
 class EquivariantMultiHeadAttention(MessagePassing):
-    def __init__(self, hidden_channels, num_rbf, distance_influence, num_heads,
-                 activation, attn_activation, cutoff_lower, cutoff_upper):
-        super(EquivariantMultiHeadAttention, self).__init__(aggr='add', node_dim=0)
-        assert hidden_channels % num_heads == 0, (f'The number of hidden channels ({hidden_channels}) '
-                                                  f'must be evenly divisible by the number of '
-                                                  f'attention heads ({num_heads})')
+    def __init__(
+        self,
+        hidden_channels,
+        num_rbf,
+        distance_influence,
+        num_heads,
+        activation,
+        attn_activation,
+        cutoff_lower,
+        cutoff_upper,
+    ):
+        super(EquivariantMultiHeadAttention, self).__init__(aggr="add", node_dim=0)
+        assert hidden_channels % num_heads == 0, (
+            f"The number of hidden channels ({hidden_channels}) "
+            f"must be evenly divisible by the number of "
+            f"attention heads ({num_heads})"
+        )
 
         self.distance_influence = distance_influence
         self.num_heads = num_heads
@@ -171,11 +228,11 @@ class EquivariantMultiHeadAttention(MessagePassing):
         self.vec_proj = nn.Linear(hidden_channels, hidden_channels * 3)
 
         self.dk_proj = None
-        if distance_influence in ['keys', 'both']:
+        if distance_influence in ["keys", "both"]:
             self.dk_proj = nn.Linear(num_rbf, hidden_channels)
 
         self.dv_proj = None
-        if distance_influence in ['values', 'both']:
+        if distance_influence in ["values", "both"]:
             self.dv_proj = nn.Linear(num_rbf, hidden_channels * 3)
 
         self.reset_parameters()
@@ -209,10 +266,30 @@ class EquivariantMultiHeadAttention(MessagePassing):
         vec = vec.reshape(-1, 3, self.num_heads, self.head_dim)
         vec_dot = (vec1 * vec2).sum(dim=1)
 
-        dk = self.act(self.dk_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim) if self.dk_proj else None
-        dv = self.act(self.dv_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim * 3) if self.dv_proj else None
+        dk = (
+            self.act(self.dk_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim)
+            if self.dk_proj
+            else None
+        )
+        dv = (
+            self.act(self.dv_proj(f_ij)).reshape(-1, self.num_heads, self.head_dim * 3)
+            if self.dv_proj
+            else None
+        )
 
-        x, vec = self.propagate(edge_index, q=q, k=k, v=v, vec=vec, dk=dk, dv=dv, r_ij=r_ij, d_ij=d_ij)
+        # propagate_type: (q: Tensor, k: Tensor, v: Tensor, vec: Tensor, dk: Tensor, dv: Tensor, r_ij: Tensor, d_ij: Tensor)
+        x, vec = self.propagate(
+            edge_index,
+            q=q,
+            k=k,
+            v=v,
+            vec=vec,
+            dk=dk,
+            dv=dv,
+            r_ij=r_ij,
+            d_ij=d_ij,
+            size=None,
+        )
         x = x.reshape(-1, self.hidden_channels)
         vec = vec.reshape(-1, 3, self.hidden_channels)
 
@@ -239,11 +316,24 @@ class EquivariantMultiHeadAttention(MessagePassing):
         # update scalar features
         x = x * attn.unsqueeze(2)
         # update vector features
-        vec = vec_j * vec1.unsqueeze(1) + vec2.unsqueeze(1) * d_ij.unsqueeze(2).unsqueeze(3)
+        vec = vec_j * vec1.unsqueeze(1) + vec2.unsqueeze(1) * d_ij.unsqueeze(
+            2
+        ).unsqueeze(3)
         return x, vec
 
-    def aggregate(self, features, index, ptr, dim_size):
+    def aggregate(
+        self,
+        features: Tuple[torch.Tensor, torch.Tensor],
+        index: torch.Tensor,
+        ptr: Optional[torch.Tensor],
+        dim_size: Optional[int],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         x, vec = features
         x = scatter(x, index, dim=self.node_dim, dim_size=dim_size)
         vec = scatter(vec, index, dim=self.node_dim, dim_size=dim_size)
         return x, vec
+
+    def update(
+        self, inputs: Tuple[torch.Tensor, torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return inputs
