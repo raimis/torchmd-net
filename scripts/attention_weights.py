@@ -28,6 +28,7 @@ dset_arg2name = {
     "salicylic_acid": "Salicylic Acid",
     "malonaldehyde": "Malondialdehyde",
 }
+kcalmol2ev = 0.043363
 
 torch.manual_seed(1234)
 
@@ -70,7 +71,8 @@ def extract_data(
     atoms_per_elem = {z: 0 for z in z2idx.keys()}
     distances = []
     # extract attention weights from model
-    for batch in tqdm(data, desc="extracting attention weights"):
+    progress = tqdm(data, desc="extracting attention weights")
+    for batch in progress:
         if model.derivative:
             torch.set_grad_enabled(True)
         pred, deriv = model(
@@ -84,9 +86,14 @@ def extract_data(
         if deriv is not None:
             deriv = deriv.detach()
 
-        losses_y.append(torch.nn.functional.l1_loss(pred.cpu(), batch.y))
+        losses_y.append(torch.nn.functional.l1_loss(pred.cpu(), batch.y).numpy())
         if deriv is not None and hasattr(batch, "dy"):
-            losses_dy.append(torch.nn.functional.l1_loss(deriv.cpu(), batch.dy))
+            losses_dy.append(torch.nn.functional.l1_loss(deriv.cpu(), batch.dy).numpy())
+            progress.set_postfix(
+                dict(loss_y=np.mean(losses_y), loss_dy=np.mean(losses_dy))
+            )
+        else:
+            progress.set_postfix(dict(loss=np.mean(losses_y)))
 
         if batch.edge_index is None:
             # guess bonds
@@ -268,6 +275,14 @@ def extract_data(
             .sum(dim=-1)
             .sqrt()
         )
+
+    print("final MAE:", end="")
+    if len(losses_dy) > 0:
+        print(
+            f"\n\tloss y:  {np.mean(losses_y):.3f}\n\tloss dy: {np.mean(losses_dy):.3f}"
+        )
+    else:
+        print(f" {np.mean(losses_y):.3f}")
 
     print("processing data")
 
