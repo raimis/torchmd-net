@@ -78,11 +78,15 @@ def extract_data(
         )
         torch.set_grad_enabled(False)
 
-        losses_y.append(torch.nn.functional.l1_loss(pred.detach().cpu(), batch.y))
+        model.zero_grad()
+        batch.pos = batch.pos.detach()
+        pred = pred.detach()
+        if deriv is not None:
+            deriv = deriv.detach()
+
+        losses_y.append(torch.nn.functional.l1_loss(pred.cpu(), batch.y))
         if deriv is not None and hasattr(batch, "dy"):
-            losses_dy.append(
-                torch.nn.functional.l1_loss(deriv.detach().cpu(), batch.dy)
-            )
+            losses_dy.append(torch.nn.functional.l1_loss(deriv.cpu(), batch.dy))
 
         if batch.edge_index is None:
             # guess bonds
