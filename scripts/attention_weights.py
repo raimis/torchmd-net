@@ -20,6 +20,7 @@ from moleculekit.vmdgraphics import VMDCylinder
 from moleculekit.vmdviewer import getCurrentViewer
 
 
+render_rate = 0.3
 num2elem = {1: "H", 6: "C", 7: "N", 8: "O", 9: "F"}
 z2idx = {1: 0, 6: 1, 7: 2, 8: 3, 9: 4}
 n_elements = len(num2elem)
@@ -70,6 +71,7 @@ def extract_data(
     zs_0_ref, zs_1_ref = [], []
     atoms_per_elem = {z: 0 for z in z2idx.keys()}
     distances = []
+    mol_save_idx = 0
     # extract attention weights from model
     progress = tqdm(data, desc="extracting attention weights")
     for batch in progress:
@@ -114,7 +116,7 @@ def extract_data(
                 idx_offset += mask.sum()
             batch.edge_index = torch.cat(edge_index, dim=1)
 
-        if plot_molecules != "off":
+        if plot_molecules != "off" and torch.rand(1) < render_rate:
             idx_offset = 0
             for mol_idx in batch.batch.unique():
                 rollout_batch = batch.batch[attention_weights.rollout_index[-1][0]]
@@ -144,7 +146,7 @@ def extract_data(
                             attention_weights.rollout_weights[-1][attn_idx] / max_attn
                         )
 
-                        draw_thresholds = (0.1, -0.1)
+                        draw_thresholds = (0.2, -0.2)
                         if (
                             strength > draw_thresholds[0]
                             or strength < draw_thresholds[1]
@@ -175,10 +177,27 @@ def extract_data(
                     mol.view(style="Licorice", viewerhandle=vmd)
                     vmd.send("mol modstyle 0 top Licorice 0.1 12 12")
                     vmd.send("mol modmaterial 0 top Transparent")
-                    vmd.send(f"material change opacity Transparent 0.25")
-                    vmd.send(f"material change opacity Diffuse 1")
-                    vmd.send(f"material change opacity Specular 0")
+                    vmd.send("material change opacity Transparent 0.4")
+                    vmd.send("material change opacity Diffuse 1")
+                    vmd.send("material change opacity Specular 0")
+                    vmd.send("mol addrep")
+
                     vmd.send("display rendermode GLSL")
+                    vmd.send("color Display Background white")
+                    vmd.send("display ambientocclusion on")
+                    vmd.send("display aoambient 1")
+                    vmd.send("display depthcue off")
+
+                    vmd.send("mol representation VDW 0.125 12")
+                    vmd.send("mol selection all")
+                    vmd.send("mol material AOChalky")
+                    vmd.send("mol addrep top")
+
+                    vmd.send(
+                        f"render TachyonLOSPRayInternal mol-{mol_save_idx}.ppm save %s"
+                    )
+                    mol_save_idx += 1
+                    vmd.close()
 
                     while not vmd.completed():
                         time.sleep(0.1)
