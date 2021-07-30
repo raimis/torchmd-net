@@ -18,6 +18,7 @@ import numpy as np
 from moleculekit.molecule import Molecule
 from moleculekit.vmdgraphics import VMDCylinder
 from moleculekit.vmdviewer import getCurrentViewer
+from PIL import Image
 
 
 render_rate = 0.3
@@ -116,11 +117,11 @@ def extract_data(
                 idx_offset += mask.sum()
             batch.edge_index = torch.cat(edge_index, dim=1)
 
-        if plot_molecules != "off" and torch.rand(1) < render_rate:
+        if plot_molecules != "off":
             idx_offset = 0
             for mol_idx in batch.batch.unique():
-                rollout_batch = batch.batch[attention_weights.rollout_index[-1][0]]
-                if plot_molecules == "VMD":
+                if torch.rand(1) < render_rate:
+                    rollout_batch = batch.batch[attention_weights.rollout_index[-1][0]]
                     vmd = getCurrentViewer()
 
                     # visualize using VMD
@@ -193,85 +194,17 @@ def extract_data(
                     vmd.send("mol material AOChalky")
                     vmd.send("mol addrep top")
 
-                    vmd.send(
-                        f"render TachyonLOSPRayInternal mol-{mol_save_idx}.ppm save %s"
-                    )
+                    img_name = f"{dataset_name}-{dataset_arg}-{mol_save_idx}.png"
+                    vmd.send(f"render TachyonLOSPRayInternal {img_name} save %s")
                     mol_save_idx += 1
                     vmd.close()
 
+                    img = np.array(Image.open(img_name))
+                    mask = (img != 254).any(axis=(1, 2)) | (img != 254).any(axis=(0, 2))
+                    Image.fromarray(img[mask][:, mask]).save(img_name)
+
                     while not vmd.completed():
                         time.sleep(0.1)
-                elif plot_molecules == "matplotlib":
-                    # visualize using matplotlib
-                    fig = plt.figure()
-                    ax = fig.add_subplot(111, projection="3d")
-                    # edges
-                    max_attn = attention_weights.rollout_weights[-1][
-                        rollout_batch == mol_idx
-                    ].max()
-                    for idx1, idx2 in attention_weights.rollout_index[-1].T[
-                        rollout_batch == mol_idx
-                    ]:
-                        # attention weights
-                        attn_idx = torch.where(
-                            (attention_weights.rollout_index[-1][0] == idx1)
-                            & (attention_weights.rollout_index[-1][1] == idx2)
-                        )[0]
-                        attn_weight = max(
-                            0,
-                            min(
-                                1,
-                                attention_weights.rollout_weights[-1][attn_idx]
-                                / max_attn,
-                            ),
-                        )
-                        ax.quiver(
-                            *batch.pos[idx1],
-                            *(batch.pos[idx2] - batch.pos[idx1]),
-                            alpha=float(attn_weight),
-                            colors="red",
-                            lw=1,
-                            arrow_length_ratio=0.1,
-                        )
-                        if (
-                            batch.edge_index is not None
-                            and (
-                                (batch.edge_index[0] == idx1)
-                                & (batch.edge_index[1] == idx2)
-                            ).any()
-                            and idx1 != idx2
-                        ):
-                            # bonds
-                            ax.plot(
-                                *torch.stack([batch.pos[idx1], batch.pos[idx2]], dim=1),
-                                alpha=1,
-                                c="0",
-                                linestyle="dotted",
-                            )
-
-                    # nodes
-                    for atom_type in num2elem.keys():
-                        if (
-                            (batch.batch == mol_idx) & (batch.z == atom_type)
-                        ).sum() == 0:
-                            continue
-                        colors = [
-                            f"C{int(z)}"
-                            for z in batch.z[
-                                (batch.batch == mol_idx) & (batch.z == atom_type)
-                            ]
-                        ]
-                        ax.scatter(
-                            *batch.pos[
-                                (batch.batch == mol_idx) & (batch.z == atom_type)
-                            ].T,
-                            c=colors,
-                            label=num2elem[atom_type],
-                            s=100,
-                        )
-                    plt.legend()
-                    plt.axis("off")
-                    plt.show()
                 idx_offset += (batch.batch == mol_idx).sum()
 
         zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
@@ -560,7 +493,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset-name', type=str, choices=datasets.__all__, help='Name of the dataset')
     parser.add_argument('--dataset-arg', type=str, help='Additional argument to the dataset class (e.g. target property for QM9)')
     parser.add_argument('--batch-size', type=int, default=64, help='Batch size for the attention weight extraction')
-    parser.add_argument('--plot-molecules', type=str, default='off', choices=['off', 'VMD', 'matplotlib'], help='The visualization system for molecules')
+    parser.add_argument('--plot-molecules', type=bool, help='The visualization system for molecules')
     parser.add_argument('--distance-plots', type=bool, help='If True, create distance-attention plots')
     parser.add_argument('--normalize-attention', type=bool, help='Whether to normalize the attention scores such that each row adds up to one')
     parser.add_argument('--combine-dataset', type=bool, help='Whether to combine all data from the same dataset')
