@@ -21,7 +21,7 @@ from moleculekit.vmdviewer import getCurrentViewer
 from PIL import Image
 
 
-render_rate = 0.3
+render_rate = 0.01
 num2elem = {1: "H", 6: "C", 7: "N", 8: "O", 9: "F"}
 z2idx = {1: 0, 6: 1, 7: 2, 8: 3, 9: 4}
 n_elements = len(num2elem)
