@@ -57,7 +57,7 @@ def extract_data(
         print("Warning: couldn't find splits.npz, using whole dataset")
         _, _, test_split = make_splits(len(data), 0, 0, None, 10)
     data = DataLoader(
-        Subset(data, test_split), batch_size=batch_size, shuffle=True, num_workers=2
+        Subset(data, test_split), batch_size=batch_size, shuffle=True, num_workers=6
     )
 
     # load model
@@ -76,6 +76,8 @@ def extract_data(
     # extract attention weights from model
     progress = tqdm(data, desc="extracting attention weights")
     for batch in progress:
+        batch = batch.to(device)
+
         if model.derivative:
             torch.set_grad_enabled(True)
         pred, deriv = model(
@@ -89,14 +91,16 @@ def extract_data(
         if deriv is not None:
             deriv = deriv.detach()
 
-        losses_y.append(torch.nn.functional.l1_loss(pred.cpu(), batch.y).numpy())
+        losses_y.append(torch.nn.functional.l1_loss(pred, batch.y).cpu().numpy())
         if deriv is not None and hasattr(batch, "dy"):
-            losses_dy.append(torch.nn.functional.l1_loss(deriv.cpu(), batch.dy).numpy())
+            losses_dy.append(torch.nn.functional.l1_loss(deriv, batch.dy).cpu().numpy())
             progress.set_postfix(
                 dict(loss_y=np.mean(losses_y), loss_dy=np.mean(losses_dy))
             )
         else:
             progress.set_postfix(dict(loss=np.mean(losses_y)))
+
+        batch = batch.cpu()
 
         if batch.edge_index is None:
             # guess bonds
@@ -117,7 +121,7 @@ def extract_data(
                 idx_offset += mask.sum()
             batch.edge_index = torch.cat(edge_index, dim=1)
 
-        if plot_molecules != "off":
+        if plot_molecules:
             idx_offset = 0
             for mol_idx in batch.batch.unique():
                 if torch.rand(1) < render_rate:
