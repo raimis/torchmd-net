@@ -102,6 +102,10 @@ def load_model(filepath, args=None, device="cpu", **kwargs):
         args = ckpt["hyper_parameters"]
     args.update(kwargs)
 
+    for key, value in kwargs.items():
+        assert key in args, "Unknown hyperparameter '{key}'."
+        args[key] = value
+
     model = create_model(args)
 
     state_dict = {re.sub(r"^model\.", "", k): v for k, v in ckpt["state_dict"].items()}
