@@ -19,7 +19,7 @@ def get_args():
     parser.add_argument('--cutoff-upper', type=float, default=15.0, help='Upper cutoff in model')
     parser.add_argument('--batch-size', type=int, default=2048, help='Number of samples per batch')
     parser.add_argument('--num-workers', type=int, default=8, help='Number of workers for data loading')
-    parser.add_argument('--device', type=str, default='cuda', help='Device to run the radius_graph function on')
+    parser.add_argument('--device', type=str, default='cpu', help='Device to run the radius_graph function on')
     # fmt: on
 
     return parser.parse_args()
@@ -40,7 +40,8 @@ def main():
     dl = DataLoader(data, batch_size=args.batch_size, num_workers=args.num_workers)
 
     errors = 0
-    for batch in tqdm(dl, desc="checking for errors"):
+    progress = tqdm(dl, desc="checking for errors")
+    for batch in progress:
         batch.to(args.device)
 
         # check with large max_num_neighbors
@@ -49,17 +50,15 @@ def main():
             args.cutoff_upper,
             batch=batch.batch,
             loop=True,
-            max_num_neighbors=1024,
+            max_num_neighbors=1000000,
         )
         # check with default max_num_neighbors (32)
         edge_index2 = radius_graph(
             batch.pos, args.cutoff_upper, batch=batch.batch, loop=True,
         )
 
-        error = edge_index1.shape != edge_index2.shape
-        if error:
-            errors += 1
-            print("Found an error")
+        errors += edge_index1.shape != edge_index2.shape
+        progress.set_postfix(dict(errors=errors))
 
     print(
         f"{errors} out of {len(dl)} batches ({errors / len(dl):.2%}) contain an error"
