@@ -64,7 +64,7 @@ def extract_data(
     print("loading model")
     model = load_model(model_path, device=device, derivative=has_dy).eval()
     # initialize attention weight collector
-    attention_weights.create(model.representation_model.num_layers)
+    attention_weights.reset(model.representation_model.num_layers)
 
     losses_y = []
     losses_dy = []
@@ -211,11 +211,11 @@ def extract_data(
                         time.sleep(0.1)
                 idx_offset += (batch.batch == mol_idx).sum()
 
-        zs_0.append(batch.z[attention_weights.rollout_index[-1][0]])
-        zs_1.append(batch.z[attention_weights.rollout_index[-1][1]])
+        zs_0.append(batch.z[attention_weights.rollout_index[-1][0]].int())
+        zs_1.append(batch.z[attention_weights.rollout_index[-1][1]].int())
 
-        zs_0_ref.append(batch.z[batch.edge_index[0]])
-        zs_1_ref.append(batch.z[batch.edge_index[1]])
+        zs_0_ref.append(batch.z[batch.edge_index[0]].int())
+        zs_1_ref.append(batch.z[batch.edge_index[1]].int())
 
         for elem in batch.z.unique().numpy():
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()

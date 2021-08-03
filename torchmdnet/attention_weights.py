@@ -4,21 +4,17 @@ from torch_sparse import spspmm
 num_layers = None
 weights = None
 edge_index = None
-rollout_index = None
-rollout_weights = None
-distances = None
+rollout_index = []
+rollout_weights = []
 _current_layer = None
 
 
-def create(layers):
-    global num_layers, weights, edge_index, rollout_index, rollout_weights, distances, _current_layer
+def reset(layers):
+    global num_layers, weights, edge_index, rollout_index, rollout_weights, _current_layer
     # initialize everything
     num_layers = layers
     weights = [[] for _ in range(num_layers)]
     edge_index = []
-    rollout_index = []
-    rollout_weights = []
-    distances = []
     _current_layer = 0
 
 
@@ -34,7 +30,7 @@ def append_weights(w):
     if _current_layer == num_layers:
         # perform attention rollout at last layer
         _rollout()
-        _current_layer = 0
+        reset(num_layers)
 
 
 def _rollout():
@@ -67,8 +63,6 @@ def _rollout():
     rollout_weights.append(cumulator_weights)
 
 
-def store_idx(idx, dist=None):
-    global edge_index, distances
+def store_idx(idx):
+    global edge_index
     edge_index.append(idx.detach().cpu())
-    if dist is not None:
-        distances.append(dist.detach().cpu())

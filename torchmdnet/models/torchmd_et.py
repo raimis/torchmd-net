@@ -163,7 +163,7 @@ class TorchMD_ET(nn.Module):
         vec = torch.zeros(x.size(0), 3, x.size(1), device=x.device)
 
         # save edge index
-        attention_weights.store_idx(edge_index, dist=edge_weight)
+        attention_weights.store_idx(edge_index)
 
         for attn in self.attention_layers:
             dx, dvec = attn(x, vec, edge_index, edge_weight, edge_attr, edge_vec)
