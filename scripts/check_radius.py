@@ -17,6 +17,7 @@ def get_args():
     parser.add_argument('--force-files', default=None, type=str, help='Custom force files glob')
 
     parser.add_argument('--cutoff-upper', type=float, default=15.0, help='Upper cutoff in model')
+    parser.add_argument('--max-num-neighbors', type=int, default=32, help='Maximum number of neighbors to check (default in radius_graph is 32)')
     parser.add_argument('--batch-size', type=int, default=2048, help='Number of samples per batch')
     parser.add_argument('--num-workers', type=int, default=8, help='Number of workers for data loading')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the radius_graph function on')
@@ -52,9 +53,13 @@ def main():
             loop=True,
             max_num_neighbors=1000000,
         )
-        # check with default max_num_neighbors (32)
+        # check with default max_num_neighbors
         edge_index2 = radius_graph(
-            batch.pos, args.cutoff_upper, batch=batch.batch, loop=True,
+            batch.pos,
+            args.cutoff_upper,
+            batch=batch.batch,
+            loop=True,
+            max_num_neighbors=args.max_num_neighbors,
         )
 
         errors += edge_index1.shape != edge_index2.shape
