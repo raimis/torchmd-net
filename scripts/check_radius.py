@@ -16,9 +16,10 @@ def get_args():
     parser.add_argument('--energy-files', default=None, type=str, help='Custom energy files glob')
     parser.add_argument('--force-files', default=None, type=str, help='Custom force files glob')
 
-    parser.add_argument('--cutoff-upper', type=float, default=5.0, help='Upper cutoff in model')
-    parser.add_argument('--batch-size', type=int, default=256, help='Number of samples per batch')
-    parser.add_argument('--num-workers', type=int, default=4, help='Number of workers for data loading')
+    parser.add_argument('--cutoff-upper', type=float, default=15.0, help='Upper cutoff in model')
+    parser.add_argument('--batch-size', type=int, default=2048, help='Number of samples per batch')
+    parser.add_argument('--num-workers', type=int, default=8, help='Number of workers for data loading')
+    parser.add_argument('--device', type=str, default='cuda', help='Device to run the radius_graph function on')
     # fmt: on
 
     return parser.parse_args()
@@ -27,6 +28,7 @@ def get_args():
 def main():
     args = get_args()
 
+    print("Loading data...")
     if args.dataset == "Custom":
         data = datasets.Custom(
             args.coord_files, args.embed_files, args.energy_files, args.force_files,
@@ -35,11 +37,12 @@ def main():
         data = getattr(datasets, args.dataset)(
             args.dataset_root, dataset_arg=args.dataset_arg
         )
-
     dl = DataLoader(data, batch_size=args.batch_size, num_workers=args.num_workers)
 
     errors = 0
-    for batch in tqdm(dl):
+    for batch in tqdm(dl, desc="checking for errors"):
+        batch.to(args.device)
+
         # check with large max_num_neighbors
         edge_index1 = radius_graph(
             batch.pos,
@@ -52,6 +55,7 @@ def main():
         edge_index2 = radius_graph(
             batch.pos, args.cutoff_upper, batch=batch.batch, loop=True,
         )
+
         error = edge_index1.shape != edge_index2.shape
         if error:
             errors += 1
