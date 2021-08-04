@@ -245,6 +245,7 @@ def extract_data(
     # compute attention weight scatter indices
     zs_full = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
     zs, index = torch.unique(zs_full, dim=1, return_inverse=True)
+    zs = zs.long()
     z_idxs = zs.clone().apply_(lambda z: z2idx[z])
     tmp = torch.zeros(2, n_elements, n_elements).long()
     tmp[:, z_idxs[0], z_idxs[1]] = zs
@@ -260,6 +261,7 @@ def extract_data(
     # compute bond probabilities from the data
     zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
     zs_ref, counts_ref = torch.unique(zs_ref, dim=1, return_counts=True)
+    zs_ref = zs_ref.long()
     counts_ref = counts_ref.float()
     for elem in zs_ref.unique():
         counts_ref[zs_ref[0] == elem] /= counts_ref[zs_ref[0] == elem].sum()
