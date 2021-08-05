@@ -156,7 +156,7 @@ def extract_data(
                             strength > draw_thresholds[0]
                             or strength < draw_thresholds[1]
                         ):
-                            vmd.send(f"mol new")
+                            vmd.send("mol new")
                             vmd.send(f"material add mat-{idx1}-{idx2}")
                             vmd.send(
                                 f"material change opacity mat-{idx1}-{idx2} {abs(strength) ** 2}"
