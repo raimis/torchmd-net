@@ -29,6 +29,7 @@ def append_weights(w):
     _current_layer += 1
     if _current_layer == num_layers:
         # perform attention rollout at last layer
+        rollout_index = []
         _rollout()
         reset(num_layers)
 
