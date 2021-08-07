@@ -68,8 +68,8 @@ def extract_data(
 
     losses_y = []
     losses_dy = []
-    zs_0, zs_1 = [], []
-    zs_0_ref, zs_1_ref = [], []
+    zs_0, zs_1 = torch.empty(0), torch.empty(0)
+    zs_0_ref, zs_1_ref = torch.empty(0), torch.empty(0)
     atoms_per_elem = {z: 0 for z in z2idx.keys()}
     distances = []
     mol_save_idx = 0
@@ -211,11 +211,11 @@ def extract_data(
                         time.sleep(0.1)
                 idx_offset += (batch.batch == mol_idx).sum()
 
-        zs_0.append(batch.z[attention_weights.rollout_index[-1][0]].int())
-        zs_1.append(batch.z[attention_weights.rollout_index[-1][1]].int())
+        zs_0 = torch.cat([zs_0, batch.z[attention_weights.rollout_index[-1][0]].int()])
+        zs_1 = torch.cat([zs_1, batch.z[attention_weights.rollout_index[-1][1]].int()])
 
-        zs_0_ref.append(batch.z[batch.edge_index[0]].int())
-        zs_1_ref.append(batch.z[batch.edge_index[1]].int())
+        zs_0_ref = torch.cat([zs_0_ref, batch.z[batch.edge_index[0]].int()])
+        zs_1_ref = torch.cat([zs_1_ref, batch.z[batch.edge_index[1]].int()])
 
         for elem in batch.z.unique().numpy():
             atoms_per_elem[elem] += (batch.z == elem).sum().numpy()
@@ -243,7 +243,8 @@ def extract_data(
     print("processing data")
 
     # compute attention weight scatter indices
-    zs_full = torch.stack([torch.cat(zs_0), torch.cat(zs_1)])
+    zs_full = torch.stack([zs_0, zs_1])
+    del zs_0, zs_1
     zs, index = torch.unique(zs_full, dim=1, return_inverse=True)
     zs = zs.long()
     z_idxs = zs.clone().apply_(lambda z: z2idx[z])
@@ -259,7 +260,8 @@ def extract_data(
     attn = tmp
 
     # compute bond probabilities from the data
-    zs_ref = torch.stack([torch.cat(zs_0_ref), torch.cat(zs_1_ref)])
+    zs_ref = torch.stack([zs_0_ref, zs_1_ref])
+    del zs_0_ref, zs_1_ref
     zs_ref, counts_ref = torch.unique(zs_ref, dim=1, return_counts=True)
     zs_ref = zs_ref.long()
     counts_ref = counts_ref.float()
