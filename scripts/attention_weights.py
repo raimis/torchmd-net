@@ -43,6 +43,7 @@ def extract_data(
     batch_size=64,
     plot_molecules=False,
     device="cpu",
+    max_samples=-1,
 ):
     torch.set_grad_enabled(False)
 
@@ -52,13 +53,14 @@ def extract_data(
     data = getattr(datasets, dataset_name)(dataset_path, dataset_arg=dataset_arg)
     has_dy = hasattr(data[0], "dy")
     if exists(splits_path):
-        _, _, test_split = make_splits(None, None, None, None, None, splits=splits_path)
+        _, _, data_split = make_splits(None, None, None, None, None, splits=splits_path)
     else:
         print("Warning: couldn't find splits.npz, using whole dataset")
-        _, _, test_split = make_splits(len(data), 0, 0, None, 10)
-    data = DataLoader(
-        Subset(data, test_split), batch_size=batch_size, shuffle=True, num_workers=6
-    )
+        _, _, data_split = make_splits(len(data), 0, 0, None, 10)
+    if max_samples > 0:
+        data_split = data_split[:max_samples]
+    data = DataLoader(Subset(data, data_split), batch_size=batch_size, num_workers=6)
+    print(f"loaded {len(data_split)} samples")
 
     # load model
     print("loading model")
@@ -507,6 +509,7 @@ if __name__ == "__main__":
     parser.add_argument('--combine-dataset', type=bool, help='Whether to combine all data from the same dataset')
     parser.add_argument('--ignore-datasets', type=str, default='', help='Comma separated names of datasets not to include in the plots')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the extraction on')
+    parser.add_argument('--max-samples', type=int, default=-1, help='Maximum number of samples to extract attention weights from (-1 for all)')
     # fmt: on
 
     args = parser.parse_args()
@@ -520,6 +523,7 @@ if __name__ == "__main__":
             args.batch_size,
             args.plot_molecules,
             args.device,
+            args.max_samples,
         )
 
     visualize(
