@@ -23,17 +23,17 @@ class MD17(InMemoryDataset):
         uracil="uracil_dft.npz",
     )
 
-    available_molecules = list(molecule_files.keys())
+    available_dataset_args = list(molecule_files.keys())
 
     def __init__(self, root, transform=None, pre_transform=None, dataset_arg=None):
         assert dataset_arg is not None, (
-            "Please provide the desired comma separated molecule(s) through"
-            f"'dataset_arg'. Available molecules are {', '.join(MD17.available_molecules)} "
+            "Please provide the desired comma separated molecule(s) through 'dataset_arg'."
+            f" Available molecules are {', '.join(MD17.available_dataset_args)} "
             "or 'all' to train on the combined dataset."
         )
 
         if dataset_arg == "all":
-            dataset_arg = ",".join(MD17.available_molecules)
+            dataset_arg = ",".join(MD17.available_dataset_args)
         self.molecules = dataset_arg.split(",")
 
         if len(self.molecules) > 1:

@@ -5,6 +5,9 @@ from torch_geometric.nn.models.schnet import qm9_target_dict
 
 
 class QM9(QM9_geometric):
+
+    available_dataset_args = list(qm9_target_dict.values())
+
     def __init__(self, root, transform=None, dataset_arg=None):
         assert dataset_arg is not None, (
             "Please pass the desired property to "
