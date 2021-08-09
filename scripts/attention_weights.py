@@ -25,6 +25,7 @@ render_rate = 0.01
 num2elem = {1: "H", 6: "C", 7: "N", 8: "O", 9: "F"}
 z2idx = {1: 0, 6: 1, 7: 2, 8: 3, 9: 4}
 n_elements = len(num2elem)
+dset2name = {"ANI1": "ANI-1", "MD17_combined": "combined\nMD17"}
 dset_arg2name = {
     "energy_U0": "$U_0$",
     "salicylic_acid": "Salicylic Acid",
@@ -347,7 +348,7 @@ def visualize(
         axes_all[dataset_idx, 0].text(
             0.6,
             0.5,
-            dset_name,
+            dset2name[dset_name] if dset_name in dset2name else dset_name,
             ha="right",
             va="center",
             transform=axes_all[dataset_idx, 0].transAxes,
@@ -432,7 +433,7 @@ def visualize(
         axes[2].barh(
             range(len(atoms_per_elem.keys())),
             atoms_per_elem.values(),
-            color="forestgreen",
+            color="dimgray",
         )
         for i, v in enumerate(atoms_per_elem.values()):
             is_max = v >= max(atoms_per_elem.values()) * 0.70
@@ -448,7 +449,7 @@ def visualize(
         axes[2].set_box_aspect(1)
         axes[2].set_xticks([])
         if dataset_idx == 0:
-            axes[2].set_title("Total", fontsize=12)
+            axes[2].set_title("#Atoms", fontsize=12)
         axes[2].tick_params(labelright=True)
 
         for ax in axes:
