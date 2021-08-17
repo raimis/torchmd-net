@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.plugins import DDPPlugin
 
 
-sys.path.insert(0,'/home/musil/git/torchmd-net/')
+sys.path.insert(0,'/home/hoffmae99/git/torchmd-net/')
 
 from torchmdnet2.utils import LoadFromFile, save_argparse, Args
 from torchmdnet2.models import MLPModel
