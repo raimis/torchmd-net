@@ -1,3 +1,4 @@
+from .schnet import SchNet
 from torch import nn
 from torch.autograd import grad
 import torch
@@ -43,28 +44,31 @@ class CGnet(nn.Module):
         """
         data.pos.requires_grad_()
 
-        energy = self.model(data.z, data.pos, data.batch)
+        if isinstance(self.model, SchNet):
+            energy = self.model(data.z, data.pos, data.batch)
+        else:
+            energy = self.model(data)
 
         if isinstance(energy, tuple):
             energy, forces = energy
             baseline_energy = self.baseline(data.pos, data.idx.shape[0])
             forces += -grad(baseline_energy, data.pos,
                                      grad_outputs=torch.ones_like(baseline_energy),
-                                    create_graph=True,
-                                    retain_graph=True)[0]
+                                    create_graph=False,
+                                    retain_graph=False)[0]
         if isinstance(energy, dict):
             energy, forces = energy['energy'], energy['forces']
             baseline_energy = self.baseline(data.pos, data.idx.shape[0])
             forces += -grad(baseline_energy, data.pos,
                                      grad_outputs=torch.ones_like(baseline_energy),
-                                    create_graph=True,
-                                    retain_graph=True)[0]
+                                    create_graph=False,
+                                    retain_graph=False)[0]
         else:
             energy += self.baseline(data.pos, data.idx.shape[0])
             forces = -grad(energy,data.pos,
                                     grad_outputs=torch.ones_like(energy),
-                                    create_graph=True,
-                                    retain_graph=True)[0]
+                                    create_graph=False,
+                                    retain_graph=False)[0]
 
 
         return energy, forces
