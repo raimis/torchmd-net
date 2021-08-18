@@ -8,10 +8,10 @@ import pyemma
 import torch  # pytorch
 import matplotlib.pyplot as plt
 
-sys.path.insert(0,'/home/musil/git/torchmd-net/')
+sys.path.insert(0,'/home/hoffmae99/git/torchmd-net/')
 from torchmdnet2.dataset import ChignolinDataset, DataModule
 from torchmdnet2.models import LNNP, SchNet, MLPModel, CGnet
-from torchmdnet2.utils import LoadFromFile, save_argparse
+from torchmdnet2.utils import LoadFromFile, save_argparse, tqdm
 from torchmdnet2.simulation import Simulation
 
 import pytorch_lightning as pl
@@ -71,20 +71,20 @@ def plot_tica(baseline_model, dataset, lag=10, tica=None):
 
 
 if __name__ == "__main__":
-    device = torch.device('cuda')
+    device = torch.device('cuda:1')
 
-    n_sims = 1000
+    n_sims = 100
     n_timesteps = 10000
     save_interval = 10
 
-    chignolin_dataset = ChignolinDataset('/local_scratch/musil/datasets/chignolin/')
+    chignolin_dataset = ChignolinDataset('/local_scratch/hoffmae99/bachelor/datasets/chignolin/')
 
-    baseline_model = chignolin_dataset.get_baseline_model(n_beads=10)  # doesn't work without specifying n_beads
+    baseline_model = chignolin_dataset.get_baseline_model(n_beads=10)  # doesn't work without specifying n_beads, not sure why
 
-    model = MLPModel.load_from_checkpoint("/local_scratch/musil/chign/epoch=5-validation_loss=27.2908-test_loss=0.0000.ckpt")
+    model = MLPModel.load_from_checkpoint("/local_scratch/hoffmae99/bachelor/chign/test_1/epoch=5-validation_loss=27.2908-test_loss=0.0000.ckpt")
 
 
-    ids = np.arange(0, len(chignolin_dataset),len(chignolin_dataset)//n_sims).tolist()
+    ids = np.arange(0, len(chignolin_dataset),len(chignolin_dataset)//n_sims).tolist()  # len(chignolin_dataset ~ 1.2M)
     init = chignolin_dataset[ids]
     initial_coords = torch.cat([init[i].pos.reshape((1,-1,3)) for i in range(len(init))], dim=0).to(device=device)
     initial_coords.requires_grad_()
@@ -95,18 +95,23 @@ if __name__ == "__main__":
     chignolin_net = CGnet(model, baseline_model).eval().to(device=device)
 
 
-    sim = Simulation(chignolin_net, initial_coords, sim_embeddings, length=n_timesteps,
+    sim = Simulation(chignolin_net, initial_coords, sim_embeddings, length=save_interval,
                     save_interval=save_interval, beta=baseline_model.beta,
                     save_potential=True, device=device,
                     log_interval=100, log_type='print',
                     batch_size=300)
-
-    traj = sim.simulate()
-
-    torch.save(traj, '/local_scratch/musil/chign/traj.pt')
+    trajs = []
+    for ii in tqdm(range(n_timesteps // save_interval), desc='outer'):
+        traj = sim.simulate(overwrite=True)
+        trajs.append(traj)
+        np.save('/local_scratch/hoffmae99/bachelor/chign/test_1/traj.npy', np.concatenate(trajs, axis=1))
+        print(sim._initial_x.shape, sim.simulated_coords.shape)
+        sim._initial_x = torch.squeeze(
+            torch.from_numpy(sim.simulated_coords).to(device=device, 
+                                            dtype=sim._initial_x.dtype)).requires_grad_()
 
     fig,_, tica = plot_tica(baseline_model, chignolin_dataset, lag=10)
-    plt.savefig('/local_scratch/musil/chign/ref_traj.png', dpi=300, bbox_inches='tight')
+    plt.savefig('/local_scratch/hoffmae99/bachelor/chign/test_1/ref_traj.png', dpi=300, bbox_inches='tight')
 
     fig,_,_ = plot_tica(baseline_model, traj, tica=tica)
-    plt.savefig('/local_scratch/musil/chign/simulated_traj.png', dpi=300, bbox_inches='tight')
+    plt.savefig('/local_scratch/hoffmae99/bachelor/chign/test_1/simulated_traj.png', dpi=300, bbox_inches='tight')
