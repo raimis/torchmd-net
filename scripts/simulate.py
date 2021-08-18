@@ -74,8 +74,8 @@ if __name__ == "__main__":
     device = torch.device('cuda')
 
     n_sims = 1000
-    n_timesteps = 10000
-    save_interval = 10
+    n_timesteps = 2
+    save_interval = 1
 
     chignolin_dataset = ChignolinDataset('/local_scratch/musil/datasets/chignolin/')
 
@@ -98,15 +98,21 @@ if __name__ == "__main__":
     sim = Simulation(chignolin_net, initial_coords, sim_embeddings, length=n_timesteps,
                     save_interval=save_interval, beta=baseline_model.beta,
                     save_potential=True, device=device,
-                    log_interval=100, log_type='print',
+                    log_interval=1, log_type='print',
                     batch_size=300)
 
-    traj = sim.simulate()
+    with torch.profiler.profile(
+        on_trace_ready=torch.profiler.tensorboard_trace_handler('/local_scratch/musil/chign/test_5'),
+        record_shapes=False,
+        with_stack=True
+        ) as prof:
 
-    torch.save(traj, '/local_scratch/musil/chign/traj.pt')
+        traj = sim.simulate()
 
-    fig,_, tica = plot_tica(baseline_model, chignolin_dataset, lag=10)
-    plt.savefig('/local_scratch/musil/chign/ref_traj.png', dpi=300, bbox_inches='tight')
+    # torch.save(traj, '/local_scratch/musil/chign/traj.pt')
 
-    fig,_,_ = plot_tica(baseline_model, traj, tica=tica)
-    plt.savefig('/local_scratch/musil/chign/simulated_traj.png', dpi=300, bbox_inches='tight')
+    # fig,_, tica = plot_tica(baseline_model, chignolin_dataset, lag=10)
+    # plt.savefig('/local_scratch/musil/chign/ref_traj.png', dpi=300, bbox_inches='tight')
+
+    # fig,_,_ = plot_tica(baseline_model, traj, tica=tica)
+    # plt.savefig('/local_scratch/musil/chign/simulated_traj.png', dpi=300, bbox_inches='tight')
