@@ -10,7 +10,8 @@ install_requires = [
     'ase',
     'e3nn',
     'numpy',
-    'scipy'
+    'scipy',
+    'opt_einsum'
 ]
 
 
