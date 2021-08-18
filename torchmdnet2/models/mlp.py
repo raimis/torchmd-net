@@ -62,13 +62,18 @@ class MLPModel(Model):
                     derivative: str ='forces',
                     factors: Optional[Dict[str, float]]=None,
                     loss: Optional[Callable] = None,
+                    species: List[int] = None,
                     **kwargs):
         super(MLPModel, self).__init__(**kwargs)
         self.save_hyperparameters()
 
         self.calculator = calculator
         layer_widths = [self.calculator.size()] + hidden_widths + [1]
-        self.mlp = MLP(layer_widths, activation_func)
+        
+        if species is None:
+            self.mlp = MLP(layer_widths, activation_func)
+        else:
+            self.mlps = {sp:MLP(layer_widths, activation_func) for sp in species}
 
         self.property = property
         self.derivative = derivative
