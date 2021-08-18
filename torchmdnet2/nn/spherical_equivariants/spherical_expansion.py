@@ -56,9 +56,9 @@ class SphericalExpansion(nn.Module):
         self.sigma = sigma
         self.cutoff = ShiftedCosineCutoff(rc, smooth_width)
 
-        self.species, _ = torch.sort(species)
+        self.species, _ = torch.sort(torch.tensor(species))
         self.n_species = len(species)
-        species2idx = -1*torch.ones(torch.max(species)+1,dtype=torch.long)
+        species2idx = -1*torch.ones(torch.max(torch.tensor(species))+1,dtype=torch.long)
         for isp, sp in enumerate(self.species):
             species2idx[sp] = isp
         self.register_buffer("species2idx", species2idx)

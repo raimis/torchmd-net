@@ -27,8 +27,9 @@ def powerspectrum(se_, nsp, nmax, lmax):
 
 class PowerSpectrum(nn.Module):
     def __init__(self, max_radial: int, max_angular: int,
-                    interaction_cutoff: float,
-                                gaussian_sigma_constant: float, species: Union[List[int], torch.Tensor], normalize: bool =True, smooth_width: float=0.5):
+                interaction_cutoff: float, gaussian_sigma_constant: float,
+                species: Union[List[int], torch.Tensor], normalize: bool =True,
+                smooth_width: float=0.5):
         super(PowerSpectrum, self).__init__()
         self.nmax = max_radial
         self.lmax = max_angular
@@ -44,7 +45,8 @@ class PowerSpectrum(nn.Module):
         for isp, sp in enumerate(self.species):
             self.species2idx[sp] = isp
 
-        self.se = SphericalExpansion(max_radial, max_angular, interaction_cutoff, gaussian_sigma_constant, species, smooth_width=smooth_width)
+        self.se = SphericalExpansion(max_radial, max_angular, interaction_cutoff,
+                                    gaussian_sigma_constant, species, smooth_width=smooth_width)
 
         self.D = int((self.n_species*self.nmax+1)**2/2) * (self.lmax+1)
 
