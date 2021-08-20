@@ -10,7 +10,7 @@ install_requires = [
     'ase',
     'e3nn',
     'numpy',
-    'scipy'
+    'scipy',
 ]
 
 

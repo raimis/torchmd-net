@@ -11,5 +11,6 @@ def safe_normalization(input, norms):
     '''Normalizes input using norms avoiding divitions by zero'''
     mask = (norms > 0.).flatten()
     out = input.clone()
+    # out = torch.zeros_like(input)
     out[mask] = input[mask] / norms[mask]
     return out

@@ -9,7 +9,7 @@ def torch_neighbor_list(data, rcut, self_interaction=True, num_workers=1, max_nu
     if 'pbc' in data:
         pbc = data.pbc
     else:
-        pbc = torch.zeros(3, dtype=bool)
+        pbc = torch.zeros(3, dtype=bool, device=data.pos.device)
 
     if torch.any(pbc):
         if 'cell' not in data:
@@ -27,12 +27,15 @@ def compute_images(positions: torch.Tensor, cell: torch.Tensor, pbc: torch.Tenso
     cell = cell.view((-1, 3, 3)).to(torch.float64)
     pbc = pbc.view((-1, 3))
     reciprocal_cell = torch.linalg.inv(cell).transpose(2, 1)
+    # print('reciprocal_cell: ', reciprocal_cell.device)
     inv_distances = reciprocal_cell.norm(2, dim=-1)
+    # print('inv_distances: ', inv_distances.device)
     num_repeats = torch.ceil(cutoff * inv_distances).to(torch.long)
     num_repeats_ = torch.where(pbc, num_repeats, torch.zeros_like(num_repeats))
-
+    # print('num_repeats_: ', num_repeats_.device)
     images, batch_images, shifts_expanded, shifts_idx_ = [], [], [], []
-    for i_structure, num_repeats in enumerate(num_repeats_):
+    for i_structure in range(num_repeats_.shape[0]):
+        num_repeats = num_repeats_[i_structure]
         r1 = torch.arange(-num_repeats[0], num_repeats[0] + 1, device=cell.device, dtype=torch.long)
         r2 = torch.arange(-num_repeats[1], num_repeats[1] + 1, device=cell.device, dtype=torch.long)
         r3 = torch.arange(-num_repeats[2], num_repeats[2] + 1, device=cell.device, dtype=torch.long)

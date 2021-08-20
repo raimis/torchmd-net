@@ -10,7 +10,7 @@ from .interpolator import NaturalCubicSpline
 def fit_splined_radial_integrals(nmax, lmax, rc, sigma, mesh_size=600):
     c = 0.5/sigma**2
     length, channels = mesh_size, nmax*lmax
-    dists = torch.linspace(0, rc, length)
+    dists = torch.linspace(0, rc+1e-6, length)
     x = torch.from_numpy(o_ri_gto(rc, nmax, lmax, dists, c)).reshape(
                                                 (length, channels))
     coeffs = natural_cubic_spline_coeffs(dists, x)
@@ -19,7 +19,6 @@ def fit_splined_radial_integrals(nmax, lmax, rc, sigma, mesh_size=600):
 def splined_radial_integrals(nmax, lmax, rc, sigma, mesh_size=600):
     coeffs = fit_splined_radial_integrals(nmax, lmax, rc, sigma, mesh_size)
     Rnl = NaturalCubicSpline(coeffs)
-    
     return Rnl
 
 def dn(n,rcut,nmax):

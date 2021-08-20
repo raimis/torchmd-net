@@ -2,14 +2,15 @@ import torch
 from torch_scatter import scatter
 import numpy as np
 
+@torch.jit.script
 def pow(input, power):
-    if power == 1:
+    if power == torch.tensor(1):
         return input
-    elif power == 2:
+    elif power == torch.tensor(2):
         return input * input
-    elif power == 3:
+    elif power == torch.tensor(3):
         return input * input * input
-    elif power == 4:
+    elif power == torch.tensor(4):
         out = input * input
         return out * out
     else:

@@ -4,25 +4,22 @@ import math
 from ..spherical_expansion import SphericalExpansion
 from typing import List, Union
 
-def powerspectrum(se_, nsp, nmax, lmax):
-    J = se_.shape[0]
-    se = se_.view((J, nsp, nmax, lmax**2))
-    ps = torch.zeros(J, nsp, nmax, nsp, nmax, lmax, dtype=se.dtype, device=se.device)
-    idx = 0
-    for l in range(lmax):
-        lbs = 2*l+1
-        ps[..., l] = torch.sum(torch.einsum('ianl,ibml->ianbml', se[..., idx:idx+lbs], se[..., idx:idx+lbs]),
-                                   dim=5) / math.sqrt(lbs)
-        idx += lbs
-    ps = ps.view(J, nsp* nmax, nsp* nmax, lmax)
-    PS = torch.zeros(J, int((nsp* nmax+1)**2/2), lmax, dtype=se.dtype, device=se.device)
+@torch.jit.script
+def powerspectrum(se_: List[torch.Tensor]) -> torch.Tensor:
+    lmax = len(se_)
+    J, nsp, nmax, _ = se_[0].shape
+    dtype = se_[0].dtype
+    device = se_[0].device
 
-    fac = math.sqrt(2.) * torch.ones((nsp*nmax,nsp*nmax))
-    fac[range(nsp*nmax), range(nsp*nmax)] = 1.
-    ids = [(i,j) for i in range(nsp*nmax)
-                for j in range(nsp*nmax) if j >= i]
-    for ii, (i, j) in enumerate(ids):
-            PS[:, ii, :] = fac[i,j]*ps[:, i, j, :]
+    PS = torch.zeros(J, lmax, int(nsp* nmax*(nsp* nmax+1)/2), dtype=dtype, device=device)
+    diag_ids = torch.arange(nsp* nmax, dtype=torch.long, device=device)
+    upper_tri = torch.triu_indices(nsp * nmax, nsp * nmax, offset=1, dtype=torch.long, device=device)
+    for l in range(lmax):
+        se = se_[l].view(J, nsp* nmax, 2*l+1)
+        PS[:, l, :nsp * nmax] = torch.einsum('iam,iam->ia', se[:, diag_ids, :], se[:, diag_ids, :]) / math.sqrt(2*l+1)
+        PS[:, l, nsp * nmax:] = math.sqrt(2.) * torch.einsum(
+            'iam,iam->ia', se[:, upper_tri[0], :], se[:, upper_tri[1], :]) / math.sqrt(2*l+1)
+
     return PS.view(J, -1)
 
 class PowerSpectrum(nn.Module):
@@ -39,7 +36,7 @@ class PowerSpectrum(nn.Module):
         if isinstance(species, list):
             species = torch.tensor(species, dtype=torch.long)
         self.species, _ = torch.sort(species)
-        
+
         self.n_species = len(species)
         self.species2idx = -1*torch.ones(torch.max(species)+1,dtype=torch.long)
         for isp, sp in enumerate(self.species):
@@ -48,15 +45,14 @@ class PowerSpectrum(nn.Module):
         self.se = SphericalExpansion(max_radial, max_angular, interaction_cutoff,
                                     gaussian_sigma_constant, species, smooth_width=smooth_width)
 
-        self.D = int((self.n_species*self.nmax+1)**2/2) * (self.lmax+1)
+        self.D = int(self.n_species*self.nmax*(self.n_species*self.nmax+1)/2) * (self.lmax+1)
 
     def size(self):
-        return int((self.n_species*self.nmax+1)**2/2) * (self.lmax+1)
+        return int(self.n_species*self.nmax*(self.n_species*self.nmax+1)/2) * (self.lmax+1)
 
     def forward(self, data):
-        ci_anlm = self.se(data)
-        pi_anbml = powerspectrum(ci_anlm, self.n_species,
-                                        self.nmax, self.lmax+1)
+        cl_ianm = self.se(data)
+        pi_anbml = powerspectrum(cl_ianm)
         if self.normalize:
             return torch.nn.functional.normalize(
                 pi_anbml.view(-1, self.D), dim=1)

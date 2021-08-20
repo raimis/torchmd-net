@@ -73,7 +73,7 @@ def plot_tica(baseline_model, dataset, lag=10, tica=None):
 if __name__ == "__main__":
     device = torch.device('cuda:0')
 
-    n_sims = 200
+    n_sims = 1000
     n_timesteps = 15000
     save_interval = 10
 
@@ -98,8 +98,8 @@ if __name__ == "__main__":
     sim = Simulation(chignolin_net, initial_coords, sim_embeddings, length=save_interval,
                     save_interval=save_interval, beta=baseline_model.beta,
                     save_potential=True, device=device,
-                    log_interval=100, log_type='print',
-                    batch_size=300)
+                    log_interval=1, log_type='print',
+                    batch_size=500)
     trajs = []
     for ii in tqdm(range(n_timesteps // save_interval), desc='outer'):
         traj = sim.simulate(overwrite=True)
