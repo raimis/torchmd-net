@@ -68,7 +68,6 @@ class SphericalExpansion(nn.Module):
 
     def forward(self, data):
         if 'idx_j' not in data or 'idx_i' not in data or 'cell_shifts' not in data:
-            print('asdfasdf')
             idx_i, idx_j, cell_shifts, _ = torch_neighbor_list(data, self.rc, self_interaction=True)
             data.idx_i = idx_i
             data.idx_j = idx_j

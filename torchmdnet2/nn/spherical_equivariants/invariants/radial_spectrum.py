@@ -25,7 +25,6 @@ class RadialSpectrum(nn.Module):
         self.D = self.n_species*self.nmax
 
     def forward(self, data):
-        # ci_an = self.se(data)
         ci_an = self.se(data)[0]
 
         if self.normalize:
