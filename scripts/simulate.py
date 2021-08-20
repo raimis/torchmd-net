@@ -71,10 +71,10 @@ def plot_tica(baseline_model, dataset, lag=10, tica=None):
 
 
 if __name__ == "__main__":
-    device = torch.device('cuda:1')
+    device = torch.device('cuda:0')
 
-    n_sims = 100
-    n_timesteps = 10000
+    n_sims = 200
+    n_timesteps = 15000
     save_interval = 10
 
     chignolin_dataset = ChignolinDataset('/local_scratch/hoffmae99/bachelor/datasets/chignolin/')
