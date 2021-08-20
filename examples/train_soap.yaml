@@ -57,7 +57,7 @@ model:  # the network architecture
     class_path: torchmdnet2.nn.spherical_equivariants.PowerSpectrum
     init_args:
       max_radial: 10
-      max_angular: 3
+      max_angular: 0
       interaction_cutoff: 15
       gaussian_sigma_constant: 1.5
       normalize: true
