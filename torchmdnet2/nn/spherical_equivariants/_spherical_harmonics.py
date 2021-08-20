@@ -140,7 +140,7 @@ class SphericalHarmonics(torch.nn.Module):
 
             elif self.normalization == 'component':
                 for ii,l in enumerate(self._ls_list):
-                    sh.mul_(math.sqrt(2 * l + 1))
+                    sh[ii].mul_(math.sqrt(2 * l + 1))
 
             return sh
 

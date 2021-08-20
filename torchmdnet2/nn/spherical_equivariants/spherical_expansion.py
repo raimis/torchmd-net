@@ -3,7 +3,6 @@ import torch.nn as nn
 
 from e3nn import o3
 from torch_scatter import scatter
-import opt_einsum as oe
 
 from ._spherical_harmonics import SphericalHarmonics
 from ..radial_basis import splined_radial_integrals
@@ -13,35 +12,16 @@ from ..math_utils import safe_norm, safe_normalization
 from typing import List
 
 
-
 @torch.jit.script
-def mult_ln_lm(x_ln: torch.Tensor, x_lm: torch.Tensor) -> torch.Tensor:
-
-    J, lmax, nmax = x_ln.shape
-    _, lmmax = x_lm.shape
-    idx = 0
-    x_out = torch.empty((J, nmax, lmmax), dtype=x_ln.dtype,
-                                            device=x_ln.device)
-    for l in range(lmax):
-        l_block_length = 2*l+1
-        x_out[...,idx:(idx+l_block_length)] = torch.einsum('jn,jm->jnm',
-                                                           x_ln[:,l,:], x_lm[:, idx:(idx+l_block_length)])
-
-        idx += l_block_length
-
-    return x_out
-
-# @torch.jit.script
 def mult_ljn_ljm(x_ljn: torch.Tensor, x_ljm: List[torch.Tensor]) -> List[torch.Tensor]:
 
     lmax, J, nmax = x_ljn.shape
     x_out = [torch.empty((J, nmax, 2*l+1), dtype=x_ljn.dtype,
                                             device=x_ljn.device) for l in range(lmax)]
-    # for l in range(lmax):
-    #     print(x_ljm[l].shape, x_ljn[l].shape)
+
     for l in range(lmax):
-        x_out[l] = oe.contract(
-            'jn,jm->jnm', x_ljn[l], x_ljm[l], backend='torch')
+        x_out[l] = torch.einsum(
+            'jn,jm->jnm', x_ljn[l], x_ljm[l])
 
     return x_out
 
@@ -87,18 +67,19 @@ class SphericalExpansion(nn.Module):
                                             normalize=False)
 
     def forward(self, data):
-        if 'direction_vectors' not in data or 'distances' not in data:
-            idx_i, idx_j, cell_shifts, self_interaction_mask = torch_neighbor_list(data, self.rc, self_interaction=True)
-            rij = (data.pos[idx_j] - data.pos[idx_i] + cell_shifts)
+        if 'idx_j' not in data or 'idx_i' not in data or 'cell_shifts' not in data:
+            print('asdfasdf')
+            idx_i, idx_j, cell_shifts, _ = torch_neighbor_list(data, self.rc, self_interaction=True)
+            data.idx_i = idx_i
+            data.idx_j = idx_j
+            data.cell_shifts = cell_shifts
 
+        if 'direction_vectors' not in data or 'distances' not in data:
+            rij = (data.pos[data.idx_j] - data.pos[data.idx_i] + data.cell_shifts)
             data.distances = safe_norm(rij, dim=1)
             data.direction_vectors = safe_normalization(rij, data.distances)
 
-            data.idx_i = idx_i
-            data.idx_j = idx_j
         reduction_ids = species_dependant_reduction_ids(data.z, data.idx_j, data.idx_i, self.species2idx)
-        # Ylm = self.Ylm(data.direction_vectors)
-        # RIln = self.Rln(data.distances).view(-1,self.lmax+1,self.nmax) * self.cutoff(data.distances)[:, None, None]
 
         Yljm = self.Ylm(data.direction_vectors)
         RIjln = self.Rln(data.distances).view(-1,self.lmax+1,self.nmax) * self.cutoff(data.distances)[:, None, None]
@@ -115,7 +96,3 @@ class SphericalExpansion(nn.Module):
                             dim_size=self.n_species*n_atoms, dim=0, reduce='sum').view(n_atoms, self.n_species, self.nmax, 2*l+1)
         return cl_ianm
 
-        # cij_nlm = mult_ln_lm(RIln, Ylm)
-        # ci_anlm = scatter(cij_nlm, reduction_ids,
-        #                     dim_size=self.n_species*n_atoms, dim=0, reduce='sum')
-        # return ci_anlm.view(n_atoms, self.n_species, self.nmax, (self.lmax+1)**2)

@@ -11,7 +11,6 @@ install_requires = [
     'e3nn',
     'numpy',
     'scipy',
-    'opt_einsum'
 ]
 
 
