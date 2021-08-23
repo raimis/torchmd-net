@@ -50,10 +50,19 @@ class ChignolinDataset(InMemoryDataset):
     @staticmethod
     def get_cg_mapping(topology):
         cg_mapping = OrderedDict()
+        cg_topo = mdtraj.Topology()
+        chain = cg_topo.add_chain()
+
         for i in range(topology.n_atoms):
             atom = topology.atom(i)
             if 'CA' == atom.name:
                 cg_mapping[i] = atom.residue.name
+                residue = cg_topo.add_residue(atom.residue.name,chain)
+                cg_topo.add_atom(atom.name,atom.element,residue)
+
+        for i in range(cg_topo.n_atoms-1):
+            a1,a2 = cg_topo.atom(i), cg_topo.atom(i+1)
+            cg_topo.add_bond(a1,a2)
         # terminal beads are treated differently from others
         aa = list(cg_mapping)
         cg_mapping[aa[0]] += '-terminal'
@@ -67,7 +76,7 @@ class ChignolinDataset(InMemoryDataset):
         embeddings
         for i,(k,v) in enumerate(cg_mapping.items()):
             cg_matrix[i, k] = 1
-        return embeddings,cg_matrix,cg_mapping
+        return embeddings,cg_matrix,cg_mapping,cg_topo
 
     @staticmethod
     def get_data_filenames(coord_dir, force_dir):
@@ -87,7 +96,7 @@ class ChignolinDataset(InMemoryDataset):
         if data is None:
             data = self.data
         if n_beads is None:
-            n_beads = data.n_beads[0]
+            n_beads = data.n_atoms[0]
         priors = []
         coordinates = data.pos.cpu().detach().numpy().reshape((-1, n_beads, 3))
         stats = GeometryStatistics(coordinates, temperature=self.temperature, backbone_inds='all', get_all_distances=True,
@@ -143,7 +152,7 @@ class ChignolinDataset(InMemoryDataset):
         traj.save(self.processed_paths[1])
 
         topology = traj.topology
-        embeddings, cg_matrix, cg_mapping = self.get_cg_mapping(topology)
+        embeddings, cg_matrix, _, _ = self.get_cg_mapping(topology)
         n_beads = cg_matrix.shape[0]
         embeddings = np.array(embeddings, dtype=np.int64)
 
