@@ -1,8 +1,7 @@
 '''
 Interactive visualizer for PES, trajectories and structure
 needs:
-conda install nglview -c conda-forge
-conda install -c conda-forge ipympl -y
+conda install nglview ipympl -c conda-forge -y
 
 and set "%matplotlib widget" at the begining of the notebook
 
