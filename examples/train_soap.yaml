@@ -7,12 +7,12 @@ trainer:
   logger:
     - class_path: pytorch_lightning.loggers.TensorBoardLogger
       init_args:
-        save_dir: '/local_scratch/hoffmae99/bachelor/chign/test_2/'
+        save_dir: '/local_scratch/hoffmae99/bachelor/chign/test_6/'
         name: tensorboard
         version: ''
     - class_path: pytorch_lightning.loggers.CSVLogger
       init_args:
-        save_dir: '/local_scratch/hoffmae99/bachelor/chign/test_2/'
+        save_dir: '/local_scratch/hoffmae99/bachelor/chign/test_6/'
         name: ''
         version: ''
   checkpoint_callback: true
@@ -23,12 +23,12 @@ trainer:
         patience: 10
     - class_path: pytorch_lightning.callbacks.model_checkpoint.ModelCheckpoint
       init_args:
-        dirpath: '/local_scratch/hoffmae99/bachelor/chign/test_2/'
+        dirpath: '/local_scratch/hoffmae99/bachelor/chign/test_6/'
         monitor: 'validation_loss'
         save_top_k: 5
         every_n_epochs: 2
         filename: '{epoch}-{validation_loss:.4f}-{test_loss:.4f}'
-  default_root_dir: '/local_scratch/hoffmae99/bachelor/chign/test_2/'
+  default_root_dir: '/local_scratch/hoffmae99/bachelor/chign/test_6/'
   log_every_n_steps: 10
   gradient_clip_val: 0
   gradient_clip_algorithm: norm
@@ -41,7 +41,7 @@ trainer:
   check_val_every_n_epoch: 1
   fast_dev_run: false
   accumulate_grad_batches: 1
-  max_epochs: 6
+  max_epochs: 50
   max_time: null
   plugins:
     - class_path: pytorch_lightning.plugins.DDPPlugin
@@ -57,7 +57,7 @@ model:  # the network architecture
     class_path: torchmdnet2.nn.spherical_equivariants.PowerSpectrum
     init_args:
       max_radial: 10
-      max_angular: 0
+      max_angular: 5
       interaction_cutoff: 15
       gaussian_sigma_constant: 1.5
       normalize: true
@@ -72,6 +72,7 @@ model:  # the network architecture
         - 6
         - 7
   hidden_widths:
+    - 500
     - 500
     - 200
     - 100
@@ -93,10 +94,10 @@ data:
     class_path: torchmdnet2.dataset.ChignolinDataset
     init_args:
       root: '/local_scratch/hoffmae99/bachelor/datasets/chignolin/'
-  log_dir: '/local_scratch/hoffmae99/bachelor/chign/test_2/'
+  log_dir: '/local_scratch/hoffmae99/bachelor/chign/test_6/'
   val_ratio: 0.01
   test_ratio: 0.01
-  batch_size: 56
-  inference_batch_size: 56
+  batch_size: 100
+  inference_batch_size: 100
   num_workers: 16
-  train_stride: 100
+  train_stride: 1
