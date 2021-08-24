@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
     sim = Simulation(chignolin_net, initial_coords, sim_embeddings, length=n_timesteps,
     dt=dt,friction=friction,masses=masses/mass_scale,
-                    save_interval=save_interval, beta=baseline_model.beta,
+                    save_interval=save_interval, beta=beta,
                     save_potential=True, device=device,
                     log_interval=log_interval, log_type='print',
                     batch_size=600, export_interval=export_interval,
