@@ -71,17 +71,17 @@ def plot_tica(baseline_model, dataset, lag=10, tica=None):
 
 
 if __name__ == "__main__":
-    device = torch.device('cuda:0')
+    device = torch.device('cpu')
 
     n_sims = 1000
-    n_timesteps = 15000
+    n_timesteps = 1000
     save_interval = 10
 
     chignolin_dataset = ChignolinDataset('/local_scratch/hoffmae99/bachelor/datasets/chignolin/')
 
     baseline_model = chignolin_dataset.get_baseline_model(n_beads=10)  # doesn't work without specifying n_beads, not sure why
 
-    model = MLPModel.load_from_checkpoint("/local_scratch/hoffmae99/bachelor/chign/test_1/epoch=5-validation_loss=27.2908-test_loss=0.0000.ckpt")
+    model = MLPModel.load_from_checkpoint("/local_scratch/hoffmae99/bachelor/chign/radial/test_0/epoch=23-validation_loss=27.2745-test_loss=0.0000.ckpt")
 
 
     ids = np.arange(0, len(chignolin_dataset),len(chignolin_dataset)//n_sims).tolist()  # len(chignolin_dataset ~ 1.2M)
@@ -98,20 +98,20 @@ if __name__ == "__main__":
     sim = Simulation(chignolin_net, initial_coords, sim_embeddings, length=save_interval,
                     save_interval=save_interval, beta=baseline_model.beta,
                     save_potential=True, device=device,
-                    log_interval=1, log_type='print',
+                    log_interval=10, log_type='print',
                     batch_size=500)
     trajs = []
     for ii in tqdm(range(n_timesteps // save_interval), desc='outer'):
         traj = sim.simulate(overwrite=True)
         trajs.append(traj)
-        np.save('/local_scratch/hoffmae99/bachelor/chign/test_1/traj.npy', np.concatenate(trajs, axis=1))
+        np.save('/local_scratch/hoffmae99/bachelor/chign/radial/test_0/traj.npy', np.concatenate(trajs, axis=1))
         print(sim._initial_x.shape, sim.simulated_coords.shape)
         sim._initial_x = torch.squeeze(
             torch.from_numpy(sim.simulated_coords).to(device=device, 
                                             dtype=sim._initial_x.dtype)).requires_grad_()
 
-    fig,_, tica = plot_tica(baseline_model, chignolin_dataset, lag=10)
-    plt.savefig('/local_scratch/hoffmae99/bachelor/chign/test_1/ref_traj.png', dpi=300, bbox_inches='tight')
+    # fig,_, tica = plot_tica(baseline_model, chignolin_dataset, lag=10)
+    # plt.savefig('/local_scratch/hoffmae99/bachelor/chign/test_1/ref_traj.png', dpi=300, bbox_inches='tight')
 
-    fig,_,_ = plot_tica(baseline_model, traj, tica=tica)
-    plt.savefig('/local_scratch/hoffmae99/bachelor/chign/test_1/simulated_traj.png', dpi=300, bbox_inches='tight')
+    # fig,_,_ = plot_tica(baseline_model, traj, tica=tica)
+    # plt.savefig('/local_scratch/hoffmae99/bachelor/chign/test_1/simulated_traj.png', dpi=300, bbox_inches='tight')
