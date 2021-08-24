@@ -1,6 +1,8 @@
 from mkl import get_max_threads,set_num_threads
 set_num_threads(16)
 
+import argparse
+
 import sys, os
 import numpy as np
 import pyemma as pe
@@ -73,15 +75,30 @@ def plot_tica(baseline_model, dataset, lag=10, tica=None):
 if __name__ == "__main__":
     device = torch.device('cuda')
 
-    n_sims = 1000
-    n_timesteps = 2
-    save_interval = 1
+    # n_sims = 1000
+    # n_timesteps = 10000
+    # save_interval = 10
+
+    n_sims = 500
+    n_timesteps = 100000
+    save_interval = 10
+    export_interval = 10000
+    log_interval = 10000
+    dt = 0.001 # ps
+    friction = 1 # ps ^-1
+    temperature = 300
+    beta =  1.677399001146518 #  kcal/mol ^-1
+    masses = np.array([
+            12, 12, 12, 12, 12,
+            12, 12, 12, 12, 12,
+        ])
+    mass_scale = 418.4 #
 
     chignolin_dataset = ChignolinDataset('/local_scratch/musil/datasets/chignolin/')
 
     baseline_model = chignolin_dataset.get_baseline_model(n_beads=10)  # doesn't work without specifying n_beads
 
-    model = MLPModel.load_from_checkpoint("/local_scratch/musil/chign/epoch=5-validation_loss=27.2908-test_loss=0.0000.ckpt")
+    model = MLPModel.load_from_checkpoint("/local_scratch/musil/chign/test_4/epoch=23-validation_loss=27.3159-test_loss=0.0000.ckpt")
 
 
     ids = np.arange(0, len(chignolin_dataset),len(chignolin_dataset)//n_sims).tolist()
@@ -96,18 +113,23 @@ if __name__ == "__main__":
 
 
     sim = Simulation(chignolin_net, initial_coords, sim_embeddings, length=n_timesteps,
+    dt=dt,friction=friction,masses=masses/mass_scale,
                     save_interval=save_interval, beta=baseline_model.beta,
                     save_potential=True, device=device,
-                    log_interval=1, log_type='print',
-                    batch_size=300)
+                    log_interval=log_interval, log_type='print',
+                    batch_size=600, export_interval=export_interval,
+                    filename='/local_scratch/musil/chign/test_4/traj')
 
-    with torch.profiler.profile(
-        on_trace_ready=torch.profiler.tensorboard_trace_handler('/local_scratch/musil/chign/test_5'),
-        record_shapes=False,
-        with_stack=True
-        ) as prof:
 
-        traj = sim.simulate()
+    traj = sim.simulate()
+    np.save('/local_scratch/musil/chign/test_4/traj.npy', traj)
+    # with torch.profiler.profile(
+    #     on_trace_ready=torch.profiler.tensorboard_trace_handler('/local_scratch/musil/chign/test_5'),
+    #     record_shapes=False,
+    #     with_stack=True
+    #     ) as prof:
+
+    #     traj = sim.simulate()
 
     # torch.save(traj, '/local_scratch/musil/chign/traj.pt')
 
