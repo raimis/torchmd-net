@@ -53,6 +53,8 @@ class MLPModel(Model):
             (default: :obj:`None`)
         loss (callable, optional): function to compute the loss which signature is :obj:`(prediction, data, factors)`
             (default: :obj:`None`)
+        weights_per_species (bool, optional): use a different set of weights for each type of atoms
+            (default: :obj:`True`)
         kwargs (optional): hypers for models.utils.Model
     '''
     def __init__(self, calculator: nn.Module,
@@ -62,13 +64,23 @@ class MLPModel(Model):
                     derivative: str ='forces',
                     factors: Optional[Dict[str, float]]=None,
                     loss: Optional[Callable] = None,
+                    weights_per_species: Optional[bool] = True,
                     **kwargs):
         super(MLPModel, self).__init__(**kwargs)
         self.save_hyperparameters()
 
         self.calculator = calculator
         layer_widths = [self.calculator.size()] + hidden_widths + [1]
-        self.mlp = MLP(layer_widths, activation_func)
+        self.weights_per_species = weights_per_species
+        self.species = calculator.species
+        self.mlps = {}
+        if weights_per_species:
+            for sp in self.species:
+                self.mlps[sp] = MLP(layer_widths, activation_func)
+        else:
+            mlp = MLP(layer_widths, activation_func)
+            for sp in self.species:
+                self.mlps[sp] = mlp
 
         self.property = property
         self.derivative = derivative
@@ -102,10 +114,14 @@ class MLPModel(Model):
     def forward(self, data):
         if self.derivative is not None:
             data.pos.requires_grad_(True)
-
+        # extract features from the atomic configurations
         features = self.calculator(data)
-
-        yi = self.mlp(features)
+        
+        # predict atomic energies
+        yi = torch.zeros_like(data.batch)
+        for sp, mlp in self.mlps.items():
+            mask = sp == data.z
+            yi[mask] = mlp(features[mask])
 
         y = scatter(yi, data.batch, dim=0)
         if self.derivative is not None:
