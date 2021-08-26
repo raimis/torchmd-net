@@ -325,7 +325,7 @@ class GaussianSmearing(torch.nn.Module):
         dist = dist.view(-1, 1) - self.offset.view(1, -1)
         return torch.exp(self.coeff * torch.pow(dist, 2))
 
-class ExpNormalSmearing(nn.Module):
+class ExpNormalSmearing(torch.nn.Module):
     def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True):
         super(ExpNormalSmearing, self).__init__()
         self.cutoff_lower = cutoff_lower
