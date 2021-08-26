@@ -73,14 +73,16 @@ class MLPModel(Model):
         layer_widths = [self.calculator.size()] + hidden_widths + [1]
         self.weights_per_species = weights_per_species
         self.species = calculator.species
-        self.mlps = {}
+
         if weights_per_species:
+            # this is necessary to detect the model parameters properly
+            # but only string keys are available
+            self.mlp = torch.nn.ModuleDict()
             for sp in self.species:
-                self.mlps[sp] = MLP(layer_widths, activation_func)
+                self.mlp[str(int(sp))] = MLP(layer_widths, activation_func)
         else:
-            mlp = MLP(layer_widths, activation_func)
-            for sp in self.species:
-                self.mlps[sp] = mlp
+            self.mlp = MLP(layer_widths, activation_func)
+
 
         self.property = property
         self.derivative = derivative
@@ -116,12 +118,15 @@ class MLPModel(Model):
             data.pos.requires_grad_(True)
         # extract features from the atomic configurations
         features = self.calculator(data)
-        
+
         # predict atomic energies
-        yi = torch.zeros_like(data.batch)
-        for sp, mlp in self.mlps.items():
-            mask = sp == data.z
-            yi[mask] = mlp(features[mask])
+        yi = torch.zeros_like(data.batch, dtype=features.dtype).view(-1,1)
+        if self.weights_per_species:
+            for sp, mlp in self.mlp.items():
+                mask = int(sp) == data.z
+                yi[mask] = mlp(features[mask])
+        else:
+            yi = self.mlp(features)
 
         y = scatter(yi, data.batch, dim=0)
         if self.derivative is not None:
