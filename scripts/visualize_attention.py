@@ -16,6 +16,7 @@ parser.add_argument('--molecule-idx', type=int, default=0, help='Index of the mo
 parser.add_argument('--model-path', type=str, help='Path to a model checkpoint with corresponding splits.npz in the same directory')
 parser.add_argument('--dataset-path', type=str, help='Path to the directory containing the dataset')
 parser.add_argument('--dataset-name', type=str, choices=datasets.__all__, help='Name of the dataset')
+parser.add_argument('--top-n', type=int, default=10, help='Number of attention weights to visualize')
 parser.add_argument('--render', type=bool, help='Whether to render and save the molecule')
 parser.add_argument('--zoom', type=float, default=1.0, help='The zoom factor when rendering the molecule')
 parser.add_argument('--device', type=str, default='cpu', help='Device to run the extraction on')
@@ -68,29 +69,32 @@ for idx1, idx2 in attention_weights.rollout_index[-1].T:
         (attention_weights.rollout_index[-1][0] == idx1)
         & (attention_weights.rollout_index[-1][1] == idx2)
     )[0]
-    strength = float(attention_weights.rollout_weights[-1][attn_idx] / max_attn)
+    strength = float(attention_weights.rollout_weights[-1][attn_idx])
+    scaled_strength = float(strength / max_attn)
 
-    draw_thresholds = (0.2, -0.2)
-    if strength > draw_thresholds[0] or strength < draw_thresholds[1]:
+    draw_threshold = sorted(attention_weights.rollout_weights[-1].abs())[-args.top_n]
+    if abs(strength) >= draw_threshold:
         vmd.send("mol new")
         vmd.send(f"material add mat-{idx1}-{idx2}")
-        vmd.send(f"material change opacity mat-{idx1}-{idx2} {abs(strength) ** 2}")
+        vmd.send(
+            f"material change opacity mat-{idx1}-{idx2} {abs(scaled_strength) ** 2}"
+        )
         vmd.send(f"material change specular mat-{idx1}-{idx2} 0")
         vmd.send(f"draw material mat-{idx1}-{idx2}")
 
-        if strength > draw_thresholds[0]:
+        if strength >= draw_threshold:
             VMDCylinder(
                 mol.coords[idx1].flatten(),
                 mol.coords[idx2].flatten(),
                 color="red",
-                radius=0.05 * abs(strength),
+                radius=0.05 * abs(scaled_strength),
             )
-        elif strength < draw_thresholds[1]:
+        elif strength <= -draw_threshold:
             VMDCylinder(
                 mol.coords[idx1].flatten(),
                 mol.coords[idx2].flatten(),
                 color="blue",
-                radius=0.05 * abs(strength),
+                radius=0.05 * abs(scaled_strength),
             )
 
 mol.view(style="Licorice", viewerhandle=vmd)
