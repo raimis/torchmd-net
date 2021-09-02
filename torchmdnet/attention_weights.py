@@ -19,7 +19,7 @@ def reset(layers):
 
 
 def append_weights(w):
-    global num_layers, weights, edge_index, _current_layer
+    global num_layers, weights, edge_index, _current_layer, rollout_index, rollout_weights
     weights[_current_layer].append(w.detach().cpu())
     assert len(weights[_current_layer]) == len(
         edge_index
@@ -30,6 +30,7 @@ def append_weights(w):
     if _current_layer == num_layers:
         # perform attention rollout at last layer
         rollout_index = []
+        rollout_weights = []
         _rollout()
         reset(num_layers)
 
