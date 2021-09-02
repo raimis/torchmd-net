@@ -1,8 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
-
-# In[1]:
-
+#!/bin/bash 
+#SBATCH -J SchNet_AA_sim 
+#SBATCH -D /data/scratch/schreibef98 
+#SBATCH -o testjob.%j.out 
+#SBATCH --partition=gpu 
+#SBATCH --nodes=1 
+#SBATCH ---gres=gpu:4 
+#SBATCH --mem=10M 
+#SBATCH --time=20:00:00 
+#SBATCH --mail-type=end 
+#SBATCH --mail-user=<EMAIL ADDRESS> 
 
 from mkl import get_max_threads,set_num_threads
 set_num_threads(16)
@@ -12,9 +20,6 @@ import argparse
 import sys, os
 import numpy as np
 import torch  # pytorch
-
-
-# In[2]:
 
 
 sys.path.insert(0,'../')
