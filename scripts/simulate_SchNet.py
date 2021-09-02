@@ -176,9 +176,9 @@ def main():
     e = (R*T)/4184
     betas = 1/e
     
-    n_sims = 100
-    n_timesteps = 1000
-    save_interval = 10
+    n_sims = 1000
+    n_timesteps = 10000000
+    save_interval = 1000
     
     
     ids = np.arange(0, len(chignolin_dataset),len(chignolin_dataset)//n_sims).tolist()
