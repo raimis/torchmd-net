@@ -111,7 +111,7 @@ def main():
         'accelerator': 'ddp_spawn',
         'num_nodes': 1,
         'early_stopping_patience': 100,
-        'inference_batch_size': 1024,
+        'inference_batch_size': 512,
         'label': None,
         
         'activation': 'tanh',
