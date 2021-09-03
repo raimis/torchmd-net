@@ -92,7 +92,7 @@ def main():
     
     
     # # Load Model
-    chignolin_dataset = ChignolinDataset('/home/mi/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
+    chignolin_dataset = ChignolinDataset('/home/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
     
     args = Args(**{
         
@@ -167,7 +167,7 @@ def main():
         cfconv_aggr=args.cfconv_aggr,
     )
     
-    model_AA.load_state_dict(torch.load('/home/mi/schreibef98/projects/torchmd-net/notebooks/chignolin_logs/test_01/last_model_AA.pt'))
+    model_AA.load_state_dict(torch.load('/home/schreibef98/projects/torchmd-net/notebooks/chignolin_logs/test_01/last_model_AA.pt'))
     model_AA.to(device)
     
     baseline_model = chignolin_dataset.get_baseline_model(n_beads=10)
