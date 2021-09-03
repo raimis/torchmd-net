@@ -18,13 +18,13 @@ model_paths = [
     "/home/philipp/Documents/models/MD17-uracil-et/epoch*",
     "/home/philipp/Documents/models/ANI1-energy-et/epoch*",
 ]
-dataset_name = "QM9"
+dataset_name = "MD17"
 
 dset2name = {"ANI1": "ANI-1", "QM9": "QM9", "MD17": "MD17"}
 dset2splits = {
-    "ANI1": "/home/philipp/Documents/models/ANI1-energy-et/splits.npz",
     "QM9": "/home/philipp/Documents/models/QM9-energy_U0-et/splits.npz",
-    "MD17": "/home/philipp/Documents/models/ANI1-energy-et/splits.npz",
+    "MD17": "/home/philipp/Documents/models/MD17-uracil-et/splits.npz",
+    "ANI1": "/home/philipp/Documents/models/ANI1-energy-et/splits.npz",
 }
 
 # create images
