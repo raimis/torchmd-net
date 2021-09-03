@@ -43,8 +43,13 @@ data = dataset(args.dataset_path, dataset_arg=dataset_arg)
 splits_path = path.join(path.dirname(args.model_path), "splits.npz")
 if path.exists(splits_path):
     splits = np.load(splits_path)
-    data = torch.utils.data.Subset(data, splits["idx_test"])
-    print(f"found {len(data)} samples in the test set")
+    if len(splits["idx_train"]) + len(splits["idx_val"]) + len(
+        splits["idx_test"]
+    ) == len(data):
+        data = torch.utils.data.Subset(data, splits["idx_test"])
+        print(f"found {len(data)} samples in the test set")
+    else:
+        print(f"found {len(data)} samples")
 else:
     print("Couldn't find splits.npz, using the whole dataset")
     print(f"found {len(data)} samples")
