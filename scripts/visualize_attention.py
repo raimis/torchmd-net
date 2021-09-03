@@ -14,7 +14,8 @@ from PIL import Image
 # fmt: off
 parser = argparse.ArgumentParser(description='Visualize Attention Weights')
 parser.add_argument('--molecule-idx', type=int, default=0, help='Index of the molecule to visualize')
-parser.add_argument('--model-path', type=str, help='Path to a model checkpoint with corresponding splits.npz in the same directory')
+parser.add_argument('--model-path', type=str, help='Path to a model checkpoint')
+parser.add_argument('--splits-path', type=str, help='Path to a splits.npz file for the dataset')
 parser.add_argument('--dataset-path', type=str, help='Path to the directory containing the dataset')
 parser.add_argument('--dataset-name', type=str, choices=datasets.__all__, help='Name of the dataset')
 parser.add_argument('--top-n', type=int, default=10, help='Number of attention weights to visualize')
@@ -40,18 +41,11 @@ except IndexError:
     dataset_arg = ""
 data = dataset(args.dataset_path, dataset_arg=dataset_arg)
 
-splits_path = path.join(path.dirname(args.model_path), "splits.npz")
-if path.exists(splits_path):
-    splits = np.load(splits_path)
-    if len(splits["idx_train"]) + len(splits["idx_val"]) + len(
-        splits["idx_test"]
-    ) == len(data):
-        data = torch.utils.data.Subset(data, splits["idx_test"])
-        print(f"found {len(data)} samples in the test set")
-    else:
-        print(f"found {len(data)} samples")
+if path.exists(args.splits_path):
+    splits = np.load(args.splits_path)
+    data = torch.utils.data.Subset(data, splits["idx_test"])
+    print(f"found {len(data)} samples in the test set")
 else:
-    print("Couldn't find splits.npz, using the whole dataset")
     print(f"found {len(data)} samples")
 
 # load model

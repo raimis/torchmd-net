@@ -1,5 +1,5 @@
 import os
-from os.path import join, basename, splitext
+from os.path import join, basename, splitext, dirname
 import sys
 from glob import glob
 import subprocess
@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 
 zoom = 1.5
 num_mols = 3
-visualize = False
+visualize = True
 img_dir = "/home/philipp/Desktop/imgs/"
 
 model_paths = [
@@ -18,7 +18,7 @@ model_paths = [
     "/home/philipp/Documents/models/MD17-uracil-et/epoch*",
     "/home/philipp/Documents/models/ANI1-energy-et/epoch*",
 ]
-dataset_name = "ANI1"
+dataset_name = "QM9"
 
 dset2name = {"ANI1": "ANI-1", "QM9": "QM9", "MD17": "MD17"}
 
@@ -26,6 +26,7 @@ dset2name = {"ANI1": "ANI-1", "QM9": "QM9", "MD17": "MD17"}
 if visualize:
     for mol_idx in np.random.permutation(100)[:num_mols]:
         for model_path in model_paths:
+            model_path_full = glob(model_path)[0]
             subprocess.check_call(
                 [
                     sys.executable,
@@ -33,7 +34,9 @@ if visualize:
                     "--molecule-idx",
                     str(mol_idx),
                     "--model-path",
-                    glob(model_path)[0],
+                    model_path_full,
+                    "--splits-path",
+                    join(dirname(model_path_full), "splits.npz"),
                     "--dataset-name",
                     dataset_name,
                     "--dataset-path",
