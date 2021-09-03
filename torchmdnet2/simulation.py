@@ -1043,7 +1043,7 @@ class PTSimulation(object):
     """
 
     def __init__(self, model, initial_coordinates, embeddings, dt=5e-4,
-                 exchange_interval=100,
+                 exchange_interval=200,
                  betas=1.0, friction=None, masses=None, diffusion=1.0,
                  save_forces=False, save_potential=False, length=100,
                  save_interval=10, random_seed=None,
@@ -1737,6 +1737,10 @@ class PTSimulation(object):
                     pairs_for_exchange = self._detect_exchange(potential_new)
                     x_new, v_new = self._perform_exchange(pairs_for_exchange,
                                                           x_new, v_new)
+                    del potential_new
+                    del _
+                    del pairs_for_exchange
+
                 else:
                     x_new = x_new.detach().to(self.device)
                     potential_new, _ = self.test_force_field(x_new)

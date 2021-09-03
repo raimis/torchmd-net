@@ -12,8 +12,8 @@
 #SBATCH --mail-type=end 
 #SBATCH --mail-user= franz.josef.schreiber@fu-berlin.de
 
-#from mkl import get_max_threads,set_num_threads
-#set_num_threads(16)
+from mkl import get_max_threads,set_num_threads
+set_num_threads(16)
 
 import argparse
 
@@ -22,7 +22,7 @@ import numpy as np
 import torch  # pytorch
 
 
-sys.path.insert(0,'home/schreibef98/projects/torchmd-net/')
+sys.path.insert(0,'../')
 from torchmdnet2.dataset import ChignolinDataset, DataModule
 from torchmdnet2.models import LNNP, SchNet, MLPModel, CGnet
 from torchmdnet2.utils import LoadFromFile, save_argparse
@@ -92,14 +92,14 @@ def main():
     
     
     # # Load Model
-    chignolin_dataset = ChignolinDataset('/home/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
+    chignolin_dataset = ChignolinDataset('/home/mi/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
     
     args = Args(**{
         
         'batch_size': 512,
      
         'load_model': None,
-        'log_dir': '/home/schreibef98/projects/torchmd-net/notebooks/chignolin_logs/test_03_AA',
+        'log_dir': '/home/schreibef98/mi/projects/torchmd-net/notebooks/chignolin_logs/test_03_AA',
         
         'dataset_name': 'chignolin',
         'dataset_root': chignolin_dataset.root,
@@ -167,7 +167,7 @@ def main():
         cfconv_aggr=args.cfconv_aggr,
     )
     
-    model_AA.load_state_dict(torch.load('/home/schreibef98/projects/torchmd-net/notebooks/chignolin_logs/test_01/last_model_AA.pt'))
+    model_AA.load_state_dict(torch.load('/home/mi/schreibef98/projects/torchmd-net/notebooks/chignolin_logs/test_01/last_model_AA.pt'))
     model_AA.to(device)
     
     baseline_model = chignolin_dataset.get_baseline_model(n_beads=10)
@@ -181,10 +181,10 @@ def main():
     e = (R*T)/4184
     betas = 1/e
     
-    n_sims = 1000
-    n_timesteps = 10000000
+    n_sims = 100
+    n_timesteps = 1000000
     save_interval = 1000
-    
+    exchange_interval = 1000
     
     ids = np.arange(0, len(chignolin_dataset),len(chignolin_dataset)//n_sims).tolist()
     init = chignolin_dataset[ids]
@@ -199,11 +199,12 @@ def main():
     sim = PTSimulation(chignolin_net, initial_coords, sim_embeddings, length=n_timesteps,
                      save_interval=save_interval, betas=betas,
                      save_potential=True, device=device,
-                     log_interval=10000, log_type='print', masses=masses, friction=1.0)
+                     log_interval=100000, log_type='print', masses=masses, friction=1.0,
+                     batch_size=1024, exchange_interval=exchange_interval)
     
     traj = sim.simulate()
     
-    torch.save(traj, '/home/schreibef98/projects/torchmd-net/datasets/trajectories/traj_AA_nsims_1000_n_timessteps_10mio.pt')
+    torch.save(traj, '/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/traj_AA_nsims_1000_n_timessteps_10mio.pt')
     
 
 
