@@ -1,4 +1,5 @@
 import time
+from os import path
 import argparse
 import numpy as np
 import torch
@@ -38,7 +39,15 @@ try:
 except IndexError:
     dataset_arg = ""
 data = dataset(args.dataset_path, dataset_arg=dataset_arg)
-print(f"found {len(data)} samples")
+
+splits_path = path.join(path.dirname(args.model_path), "splits.npz")
+if path.exists(splits_path):
+    splits = np.load(splits_path)
+    data = torch.utils.data.Subset(data, splits["idx_test"])
+    print(f"found {len(data)} samples in the test set")
+else:
+    print("Couldn't find splits.npz, using the whole dataset")
+    print(f"found {len(data)} samples")
 
 # load model
 print("loading model")
