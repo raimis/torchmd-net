@@ -27,8 +27,8 @@ from torchmdnet2.dataset import ChignolinDataset, DataModule
 from torchmdnet2.models import LNNP, SchNet, MLPModel, CGnet
 from torchmdnet2.utils import LoadFromFile, save_argparse
 from torchmdnet2.simulation import Simulation, PTSimulation
-
 device = torch.device('cuda')
+
 
 def main():
     # # Utils

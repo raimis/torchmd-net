@@ -15,7 +15,10 @@ import mdtraj
 
 from ..nn import BaselineModel, RepulsionLayer, HarmonicLayer
 from ..geometry import GeometryFeature, GeometryStatistics
-from ..utils import tqdm
+# from ..utils import tqdm # removed for allegro run
+# tqdm was used in         for i_traj, tag in enumerate(coord_fns, desc='Load Dataset'):
+# as         for i_traj, tag in enumerate(tqdm(coord_fns, desc='Load Dataset')):
+
 
 
 class ChignolinDataset(InMemoryDataset):
@@ -153,7 +156,7 @@ class ChignolinDataset(InMemoryDataset):
 
         data_list = []
         ii_frame = 0
-        for i_traj, tag in enumerate(tqdm(coord_fns, desc='Load Dataset')):
+        for i_traj, tag in enumerate(coord_fns, desc='Load Dataset'):
             forces = np.load(forces_fns[tag])
             cg_forces = np.array(np.einsum('mn, ind-> imd', f_proj, forces), dtype=np.float32)
 
