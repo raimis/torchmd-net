@@ -199,7 +199,7 @@ def main():
     sim = PTSimulation(chignolin_net, initial_coords, sim_embeddings, length=n_timesteps,
                      save_interval=save_interval, betas=betas,
                      save_potential=True, device=device,
-                     log_interval=100, log_type='print', masses=masses, friction=1.0)
+                     log_interval=10000, log_type='print', masses=masses, friction=1.0)
     
     traj = sim.simulate()
     
