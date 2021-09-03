@@ -90,4 +90,4 @@ for i, model_name in enumerate(images.keys()):
             )
         axes[i, mol_idx + 1].imshow(images[model_name][mol_idx])
         axes[i, mol_idx + 1].axis("off")
-plt.savefig("/tmp/test.pdf", bbox_inches="tight", dpi=400)
+plt.savefig(f"/tmp/{dataset_name.lower()}-attention.pdf", bbox_inches="tight", dpi=400)
