@@ -2,18 +2,18 @@
 # coding: utf-8
 #!/bin/bash 
 #SBATCH -J SchNet_AA_sim 
-#SBATCH -D /data/scratch/schreibef98 
-#SBATCH -o testjob.%j.out 
+#SBATCH -D /data/scratch/schreibef98/projects
+#SBATCH -o SchNet_AA_sim.%j.out 
 #SBATCH --partition=gpu 
 #SBATCH --nodes=1 
-#SBATCH ---gres=gpu:4 
+#SBATCH --gres=gpu:4 
 #SBATCH --mem=10M 
 #SBATCH --time=20:00:00 
 #SBATCH --mail-type=end 
-#SBATCH --mail-user=<EMAIL ADDRESS> 
+#SBATCH --mail-user= franz.josef.schreiber@fu-berlin.de
 
-from mkl import get_max_threads,set_num_threads
-set_num_threads(16)
+#from mkl import get_max_threads,set_num_threads
+#set_num_threads(16)
 
 import argparse
 
@@ -22,7 +22,7 @@ import numpy as np
 import torch  # pytorch
 
 
-sys.path.insert(0,'../')
+sys.path.insert(0,'home/schreibef98/projects/torchmd-net/')
 from torchmdnet2.dataset import ChignolinDataset, DataModule
 from torchmdnet2.models import LNNP, SchNet, MLPModel, CGnet
 from torchmdnet2.utils import LoadFromFile, save_argparse
@@ -203,7 +203,7 @@ def main():
     
     traj = sim.simulate()
     
-    torch.save(traj, '/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_run.pt')
+    torch.save(traj, '/home/schreibef98/projects/torchmd-net/datasets/trajectories/traj_AA_nsims_1000_n_timessteps_10mio.pt')
     
 
 
