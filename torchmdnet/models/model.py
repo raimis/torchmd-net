@@ -195,9 +195,11 @@ class TorchMD_Net(nn.Module):
                     retain_graph=True,
                 )[0]
                 if dy is None:
-                    raise RuntimeError("Autograd returned None for the force prediction.")
+                    raise RuntimeError(
+                        "Autograd returned None for the force prediction."
+                    )
                 return out, -dy
             else:
-                rank_zero_warn('Model needs to compute derivative but grad is disabled')
+                rank_zero_warn("Model needs to compute derivative but grad is disabled")
         # TODO: return only `out` once Union typing works with TorchScript (https://github.com/pytorch/pytorch/pull/53180)
         return out, None

@@ -431,9 +431,7 @@ def visualize(
 
         # subplot 2
         axes[2].barh(
-            range(len(atoms_per_elem.keys())),
-            atoms_per_elem.values(),
-            color="dimgray",
+            range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color="dimgray",
         )
         for i, v in enumerate(atoms_per_elem.values()):
             is_max = v >= max(atoms_per_elem.values()) * 0.70
