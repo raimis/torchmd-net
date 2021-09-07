@@ -1737,6 +1737,7 @@ class PTSimulation(object):
                     pairs_for_exchange = self._detect_exchange(potential_new)
                     x_new, v_new = self._perform_exchange(pairs_for_exchange,
                                                           x_new, v_new)
+                    # for memory efficiency
                     del potential_new
                     del _
                     del pairs_for_exchange

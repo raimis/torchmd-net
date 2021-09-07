@@ -24,6 +24,7 @@ import torch  # pytorch
 
 sys.path.insert(0,'../')
 from torchmdnet2.dataset import ChignolinDataset, DataModule
+from torchmdnet2.dataset.chignolin_BG import ChignolinBGDataset
 from torchmdnet2.models import LNNP, SchNet, MLPModel, CGnet
 from torchmdnet2.utils import LoadFromFile, save_argparse
 from torchmdnet2.simulation import Simulation, PTSimulation
@@ -99,7 +100,7 @@ def main():
         'batch_size': 512,
      
         'load_model': None,
-        'log_dir': '/home/schreibef98/mi/projects/torchmd-net/notebooks/chignolin_logs/test_03_AA',
+        'log_dir': '/home/mi/schreibef98/projects/torchmd-net/notebooks/chignolin_logs/test_03_AA',
         
         'dataset_name': 'chignolin',
         'dataset_root': chignolin_dataset.root,
@@ -204,7 +205,7 @@ def main():
     
     traj = sim.simulate()
     
-    torch.save(traj, '/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/traj_AA_nsims_1000_n_timessteps_10mio.pt')
+    torch.save(traj, '/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/traj_AA_nsims_100_n_timessteps_1mio.pt')
     
 
 
