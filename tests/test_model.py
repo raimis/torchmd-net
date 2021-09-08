@@ -17,8 +17,10 @@ from utils import load_example_args, create_example_batch
 def test_forward(model_name, use_batch):
     z, pos, batch = create_example_batch()
     model = create_model(load_example_args(model_name, prior_model=None))
-    batch = batch if use_batch else None
-    model(z, pos, batch=batch)
+    if use_batch:
+        model(z, pos, batch)
+    else:
+        model(z, pos)
 
 
 @mark.parametrize("model_name", models.__all__)
@@ -49,15 +51,24 @@ def test_forward_torchscript(model_name, derivative):
 
 @mark.parametrize("model_name", models.__all__)
 @mark.parametrize("derivative", [True, False])
-def test_forward_trace(model_name, derivative):
+@mark.parametrize("call_with_batch", [True, False])
+def test_forward_trace(model_name, derivative, call_with_batch):
     z, pos, batch = create_example_batch()
     model = create_model(
         load_example_args(model_name, remove_prior=True, derivative=derivative)
     )
 
-    y_before, dy_before = model(z, pos, batch)
+    if call_with_batch:
+        y_before, dy_before = model(z, pos, batch)
+    else:
+        y_before, dy_before = model(z, pos)
+
     model.network = torch.jit.trace(model.network, [z, pos, batch])
-    y_after, dy_after = model(z, pos, batch=batch)
+
+    if call_with_batch:
+        y_after, dy_after = model(z, pos, batch)
+    else:
+        y_after, dy_after = model(z, pos)
 
     assert_allclose(y_before, y_after), "Prediction changed after torch.jit.trace."
     if derivative:

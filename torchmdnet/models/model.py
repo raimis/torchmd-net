@@ -134,6 +134,9 @@ class TorchMD_Net(nn.Module):
         self.network.reset_parameters()
 
     def forward(self, z, pos, batch: Optional[torch.Tensor] = None):
+        assert z.dim() == 1 and z.dtype == torch.long
+        batch = torch.zeros_like(z) if batch is None else batch
+
         if self.derivative:
             pos.requires_grad_(True)
 
@@ -199,10 +202,7 @@ class PredictionNetwork(nn.Module):
         if self.prior_model is not None:
             self.prior_model.reset_parameters()
 
-    def forward(self, z, pos, batch: Optional[torch.Tensor] = None):
-        assert z.dim() == 1 and z.dtype == torch.long
-        batch = torch.zeros_like(z) if batch is None else batch
-
+    def forward(self, z, pos, batch):
         # run the potentially wrapped representation model
         x, v, z, pos, batch = self.representation_model(z, pos, batch=batch)
 
