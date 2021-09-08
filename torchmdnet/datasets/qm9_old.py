@@ -23,7 +23,9 @@ class QM9_old(InMemoryDataset):
 
     def get(self, idx):
         x = self.data[idx]
-        return Data(z=x["_atomic_numbers"], pos=x["_positions"], y=x[self.dset_arg])
+        return Data(
+            z=x["_atomic_numbers"], pos=x["_positions"], y=x[self.dset_arg][None]
+        )
 
     def len(self):
         return len(self.data)
