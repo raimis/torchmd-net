@@ -12,6 +12,14 @@ class External:
             embeddings.size(1)
         )
         self.model.eval()
+        self.model.network = torch.jit.trace(
+            self.model.network,
+            [
+                self.embeddings,
+                torch.randn(self.embeddings.size(0), 3, device=device),
+                self.batch,
+            ],
+        )
 
     def calculate(self, pos, box):
         pos = pos.to(self.device).type(torch.float32).reshape(-1, 3)
