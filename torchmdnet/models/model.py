@@ -119,6 +119,54 @@ class TorchMD_Net(nn.Module):
         derivative=False,
     ):
         super(TorchMD_Net, self).__init__()
+        self.network = PredictionNetwork(
+            representation_model, output_model, prior_model, reduce_op, mean, std
+        )
+        self.derivative = derivative
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        self.network.reset_parameters()
+
+    def forward(self, z, pos, batch: Optional[torch.Tensor] = None):
+        if self.derivative:
+            pos.requires_grad_(True)
+
+        out = self.network(z, pos, batch)
+
+        # compute gradients with respect to coordinates
+        if self.derivative:
+            grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(out)]
+            dy = grad(
+                [out],
+                [pos],
+                grad_outputs=grad_outputs,
+                create_graph=True,
+                retain_graph=True,
+            )[0]
+            if dy is None:
+                raise RuntimeError("Autograd returned None for the force prediction.")
+            return out, -dy
+
+        # TODO: return only `out` once Union typing works with TorchScript:
+        #       https://github.com/pytorch/pytorch/pull/53180
+        # Can't return `None` for the derivative because torch.jit.trace expects all
+        # return values to be Tensors
+        return out, torch.empty(0)
+
+
+class PredictionNetwork(nn.Module):
+    def __init__(
+        self,
+        representation_model,
+        output_model,
+        prior_model=None,
+        reduce_op="add",
+        mean=None,
+        std=None,
+    ):
+        super(PredictionNetwork, self).__init__()
         self.representation_model = representation_model
         self.output_model = output_model
 
@@ -133,7 +181,6 @@ class TorchMD_Net(nn.Module):
             )
 
         self.reduce_op = reduce_op
-        self.derivative = derivative
 
         mean = torch.scalar_tensor(0) if mean is None else mean
         self.register_buffer("mean", mean)
@@ -151,9 +198,6 @@ class TorchMD_Net(nn.Module):
     def forward(self, z, pos, batch: Optional[torch.Tensor] = None):
         assert z.dim() == 1 and z.dtype == torch.long
         batch = torch.zeros_like(z) if batch is None else batch
-
-        if self.derivative:
-            pos.requires_grad_(True)
 
         # run the potentially wrapped representation model
         x, v, z, pos, batch = self.representation_model(z, pos, batch=batch)
@@ -178,19 +222,4 @@ class TorchMD_Net(nn.Module):
 
         # apply output model after reduction
         out = self.output_model.post_reduce(out)
-
-        # compute gradients with respect to coordinates
-        if self.derivative:
-            grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(out)]
-            dy = grad(
-                [out],
-                [pos],
-                grad_outputs=grad_outputs,
-                create_graph=True,
-                retain_graph=True,
-            )[0]
-            if dy is None:
-                raise RuntimeError("Autograd returned None for the force prediction.")
-            return out, -dy
-        # TODO: return only `out` once Union typing works with TorchScript (https://github.com/pytorch/pytorch/pull/53180)
-        return out, None
+        return out

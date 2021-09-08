@@ -3,6 +3,7 @@ from pytest import mark
 import pickle
 from os.path import exists, dirname, join
 import torch
+from torch.testing import assert_allclose
 import pytorch_lightning as pl
 from torchmdnet import models
 from torchmdnet.models.model import create_model
@@ -30,7 +31,8 @@ def test_forward_output_modules(model_name, output_model):
 
 
 @mark.parametrize("model_name", models.__all__)
-def test_forward_torchscript(model_name):
+@mark.parametrize("derivative", [True, False])
+def test_forward_torchscript(model_name, derivative):
     if model_name == "equivariant-transformer":
         # TODO: also test equivariant Transformer after the release of
         # https://github.com/rusty1s/pytorch_geometric/commit/673f94729b6a520b994699da5aa8dd3d1a1f670b
@@ -38,9 +40,35 @@ def test_forward_torchscript(model_name):
 
     z, pos, batch = create_example_batch()
     model = torch.jit.script(
-        create_model(load_example_args(model_name, remove_prior=True, derivative=True))
+        create_model(
+            load_example_args(model_name, remove_prior=True, derivative=derivative)
+        )
     )
     model(z, pos, batch=batch)
+
+
+@mark.parametrize("model_name", models.__all__)
+@mark.parametrize("derivative", [True, False])
+def test_forward_trace(model_name, derivative):
+    if model_name == "equivariant-transformer":
+        # TODO: also test equivariant Transformer after the release of
+        # https://github.com/rusty1s/pytorch_geometric/commit/673f94729b6a520b994699da5aa8dd3d1a1f670b
+        pytest.skip("currently only works on the torch-geometric main branch")
+
+    z, pos, batch = create_example_batch()
+    model = create_model(
+        load_example_args(model_name, remove_prior=True, derivative=derivative)
+    )
+
+    y_before, dy_before = model(z, pos, batch)
+    model.network = torch.jit.trace(model.network, [z, pos, batch])
+    y_after, dy_after = model(z, pos, batch=batch)
+
+    assert_allclose(y_before, y_after), "Prediction changed after torch.jit.trace."
+    if derivative:
+        assert_allclose(
+            dy_before, dy_after
+        ), "Gradient of prediction changed after torch.jit.trace."
 
 
 @mark.parametrize("model_name", models.__all__)
@@ -93,8 +121,6 @@ def test_forward_output(model_name, output_model, overwrite_reference=False):
         ), f"Set new reference outputs for {model_name} with output model {output_model}."
 
     # compare actual ouput with reference
-    torch.testing.assert_allclose(pred, expected[model_name][output_model]["pred"])
+    assert_allclose(pred, expected[model_name][output_model]["pred"])
     if derivative:
-        torch.testing.assert_allclose(
-            deriv, expected[model_name][output_model]["deriv"]
-        )
+        assert_allclose(deriv, expected[model_name][output_model]["deriv"])

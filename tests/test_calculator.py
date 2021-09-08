@@ -5,7 +5,6 @@ from glob import glob
 from os.path import dirname, join
 from torchmdnet.calculators import External
 from torchmdnet.models.model import load_model
-
 from utils import create_example_batch
 
 
@@ -25,7 +24,7 @@ def test_compare_forward(checkpoint):
     e_pred, f_pred = model(z, pos)
 
     assert_allclose(e_calc, e_pred)
-    assert_allclose(f_calc, f_pred.unsqueeze(0))
+    assert_allclose(f_calc, f_pred.reshape(-1, len(z), 3))
 
 
 @mark.parametrize(

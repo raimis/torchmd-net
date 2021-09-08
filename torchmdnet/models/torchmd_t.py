@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from torch_geometric.nn import MessagePassing
 from torchmdnet.models.utils import (
@@ -150,7 +151,7 @@ class TorchMD_T(nn.Module):
             x = x + attn(x, edge_index, edge_weight, edge_attr)
         x = self.out_norm(x)
 
-        return x, None, z, pos, batch
+        return x, torch.empty(0, device=x.device), z, pos, batch
 
     def __repr__(self):
         return (
