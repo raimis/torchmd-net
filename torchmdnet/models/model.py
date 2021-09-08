@@ -102,7 +102,13 @@ def load_model(filepath, args=None, device="cpu", **kwargs):
 
     model = create_model(args)
 
-    state_dict = {re.sub(r"^model\.", "", k): v for k, v in ckpt["state_dict"].items()}
+    # TODO: remove `("" if k.startswith("model.network.") else "network.") + `
+    # in the future. This is legacy code for loading old checkpoint files.
+    state_dict = {
+        ("" if k.startswith("model.network.") else "network.")
+        + re.sub(r"^model\.", "", k): v
+        for k, v in ckpt["state_dict"].items()
+    }
     model.load_state_dict(state_dict)
     return model.to(device)
 
@@ -123,8 +129,6 @@ class TorchMD_Net(nn.Module):
             representation_model, output_model, prior_model, reduce_op, mean, std
         )
         self.derivative = derivative
-
-        self.reset_parameters()
 
     def reset_parameters(self):
         self.network.reset_parameters()
