@@ -30,6 +30,9 @@ def create_model(args, prior_model=None, mean=None, std=None):
 
     # representation network
     if args["model"] == "graph-network":
+        # TODO: remove legacy
+        args["aggr"] = args["aggr"] if "aggr" in args else "add"
+
         is_equivariant = False
         representation_model = TorchMD_GN(
             num_filters=args["embedding_dimension"], aggr=args["aggr"], **shared_args
