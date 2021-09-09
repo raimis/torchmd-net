@@ -71,6 +71,7 @@ text_size = 12
 title_size = 15
 
 # create plot
+plt.style.use("seaborn-dark")
 fig, axes = plt.subplots(
     len(model_paths),
     num_mols + 1,

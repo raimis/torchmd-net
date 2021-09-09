@@ -300,6 +300,7 @@ def visualize(
     basedir, normalize_attention, distance_plots, combine_dataset, ignore_datasets=[]
 ):
     plt.rcParams["mathtext.fontset"] = "cm"
+    plt.style.use("seaborn-dark")
 
     paths = sorted(glob.glob(join(basedir, "**", "attn_weights.pkl"), recursive=True))
     ignore_datasets = [name.lower() for name in ignore_datasets]
@@ -431,7 +432,7 @@ def visualize(
 
         # subplot 2
         axes[2].barh(
-            range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color="dimgray",
+            range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color="0.6",
         )
         for i, v in enumerate(atoms_per_elem.values()):
             is_max = v >= max(atoms_per_elem.values()) * 0.70
@@ -447,7 +448,7 @@ def visualize(
         axes[2].set_box_aspect(1)
         axes[2].set_xticks([])
         if dataset_idx == 0:
-            axes[2].set_title("#Atoms", fontsize=12)
+            axes[2].set_title("No. Atoms", fontsize=12)
         axes[2].tick_params(labelright=True)
 
         for ax in axes:
