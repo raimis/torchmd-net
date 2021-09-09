@@ -63,7 +63,8 @@ def test_forward_trace(model_name, derivative, call_with_batch):
     else:
         y_before, dy_before = model(z, pos)
 
-    model.network = torch.jit.trace(model.network, [z, pos, batch])
+    jit_batch = batch if call_with_batch else torch.zeros_like(z)
+    model.network = torch.jit.trace(model.network, [z, pos, jit_batch])
 
     if call_with_batch:
         y_after, dy_after = model(z, pos, batch)
