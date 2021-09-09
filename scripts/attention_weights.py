@@ -450,6 +450,7 @@ def visualize(
         if dataset_idx == 0:
             axes[2].set_title("No. Atoms", fontsize=12)
         axes[2].tick_params(labelright=True)
+        axes[2].set_facecolor("white")
 
         for ax in axes:
             ax.tick_params(color="0.5", right=True)
