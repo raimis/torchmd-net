@@ -128,6 +128,8 @@ class TorchMD_Net(nn.Module):
         derivative=False,
     ):
         super(TorchMD_Net, self).__init__()
+        # TODO: merge content from PredictionNetwork into TorchMD_Net
+        # once https://github.com/pytorch/pytorch/issues/63145 is fixed
         self.network = PredictionNetwork(
             representation_model, output_model, prior_model, reduce_op, mean, std
         )
@@ -167,6 +169,14 @@ class TorchMD_Net(nn.Module):
 
 
 class PredictionNetwork(nn.Module):
+    """Temporary module to separate running the model and computing forces.
+    
+    Calling torch.autograd.grad in a JIT compiled module currently doesn't work.
+    In order to compile the model using torch.jit.trace, the grad call has to be in a
+    separate nn.Module, which is not compiled. This module can be merged into TorchMD_Net
+    once https://github.com/pytorch/pytorch/issues/63145 is fixed.
+    """
+
     def __init__(
         self,
         representation_model,
