@@ -14,7 +14,6 @@ parser = argparse.ArgumentParser(description='Displacement attention weights')
 parser.add_argument('--model-path', type=str, help='Path to a model checkpoint')
 parser.add_argument('--splits-path', type=str, help='Path to a splits.npz file for the dataset')
 parser.add_argument('--qm9-path', type=str, help='Path to the directory containing the dataset')
-parser.add_argument('--top-n', type=int, default=10, help='Number of attention weights to visualize')
 parser.add_argument('--device', type=str, default='cpu', help='Device to run the extraction on')
 # fmt: on
 
@@ -47,7 +46,7 @@ displaced = {1: [], 6: [], 8: []}
 normal = {1: [], 6: [], 8: []}
 
 mol_idx = 0
-total = 100
+total = 20
 progress = tqdm(total=total)
 while progress.n < total:
     if 7 in data[mol_idx].z or 9 in data[mol_idx].z:
