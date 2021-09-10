@@ -52,8 +52,7 @@ if args.extract_data:
     displaced = {1: [], 6: [], 8: []}
     normal = {1: [], 6: [], 8: []}
 
-    # for mol_idx in tqdm(range(len(data))):
-    for mol_idx in tqdm(range(10)):
+    for mol_idx in tqdm(range(len(data))):
         if 7 in data[mol_idx].z or 9 in data[mol_idx].z:
             continue
 
