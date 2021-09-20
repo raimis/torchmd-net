@@ -308,6 +308,7 @@ def visualize(
         path
         for path in paths
         if basename(dirname(path)).split("-")[0].lower() not in ignore_datasets
+        and basename(dirname(dirname(path))) != "ignore"
     ]
 
     dataset_paths = dict()
@@ -324,16 +325,16 @@ def visualize(
     # plot attention weights
     print(f"creating attention plot with {len(paths)} datasets")
     fig, axes_all = plt.subplots(
-        nrows=len(paths),
-        ncols=4,
+        nrows=2,
+        ncols=len(paths) + 1,
         sharex=False,
         sharey=True,
-        figsize=(8, 2.4 * len(paths)),
-        gridspec_kw=dict(width_ratios=[0.5, 1, 1, 1], hspace=0),
+        figsize=(2.3 * len(paths), 4),
+        gridspec_kw=dict(width_ratios=[0.4, 1, 1, 1], hspace=0.1, wspace=0.1),
         squeeze=False,
     )
 
-    for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all[:, 1:])):
+    for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all.T[1:])):
         if combine_dataset:
             dset_name = path
         else:
@@ -345,15 +346,31 @@ def visualize(
             ]
             dset_name = "\n".join(dset_name)
 
-        axes_all[dataset_idx, 0].axis("off")
-        axes_all[dataset_idx, 0].text(
-            0.6,
+        axes_all[0, 0].axis("off")
+        axes_all[0, 0].text(
+            0,
             0.5,
-            dset2name[dset_name] if dset_name in dset2name else dset_name,
-            ha="right",
+            "Bond probabilities",
+            rotation=90,
+            ha="left",
             va="center",
-            transform=axes_all[dataset_idx, 0].transAxes,
+            transform=axes_all[0, 0].transAxes,
             fontsize=12,
+        )
+        axes_all[1, 0].axis("off")
+        axes_all[1, 0].text(
+            0,
+            0.5,
+            "Attention scores",
+            rotation=90,
+            ha="left",
+            va="center",
+            transform=axes_all[1, 0].transAxes,
+            fontsize=12,
+        )
+
+        axes[0].set_title(
+            dset2name[dset_name] if dset_name in dset2name else dset_name, fontsize=12,
         )
 
         elements = num2elem.values()
@@ -401,14 +418,12 @@ def visualize(
             xticklabels=elements,
             yticklabels=elements,
         )
-        axes[0].set_ylabel("$z_i$", fontsize=15)
+        axes[0].tick_params(labeltop=True, labelbottom=False)
         if dataset_idx == 0:
-            axes[0].set_title("Bond Probabilities", fontsize=12)
+            axes[0].set_ylabel("$z_i$", fontsize=15)
             axes[0].tick_params(labelleft=True)
-        else:
-            axes[0].tick_params(labelleft=True, top=True)
         if dataset_idx == len(paths) - 1:
-            axes[0].set_xlabel("$z_j$", fontsize=15)
+            axes[0].tick_params(labelright=True)
 
         # subplot 1
         if normalize_attention:
@@ -423,41 +438,54 @@ def visualize(
             xticklabels=elements,
             yticklabels=elements,
         )
+        axes[1].set_xlabel("$z_j$", fontsize=15)
         if dataset_idx == 0:
-            axes[1].set_title("Attention Scores", fontsize=12)
-        else:
-            axes[1].tick_params(top=True)
+            axes[1].tick_params(labelleft=True, top=True)
+            axes[1].set_ylabel("$z_i$", fontsize=15)
         if dataset_idx == len(paths) - 1:
-            axes[1].set_xlabel("$z_j$", fontsize=15)
+            axes[1].tick_params(labelright=True)
 
-        # subplot 2
-        axes[2].barh(
-            range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color="0.6",
-        )
-        for i, v in enumerate(atoms_per_elem.values()):
-            is_max = v >= max(atoms_per_elem.values()) * 0.70
-            offset = max(atoms_per_elem.values()) * 0.025
-            axes[2].text(
-                v - offset if is_max else v + offset,
-                i,
-                str(v),
-                va="center",
-                ha="right" if is_max else "left",
-                color="1" if is_max else "0",
-            )
-        axes[2].set_box_aspect(1)
-        axes[2].set_xticks([])
-        if dataset_idx == 0:
-            axes[2].set_title("No. Atoms", fontsize=12)
-        axes[2].tick_params(labelright=True)
-        axes[2].set_facecolor("white")
+        # # subplot 2
+        # axes[2].barh(
+        #     range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color="0.6",
+        # )
+        # for i, v in enumerate(atoms_per_elem.values()):
+        #     is_max = v >= max(atoms_per_elem.values()) * 0.70
+        #     offset = max(atoms_per_elem.values()) * 0.025
+        #     axes[2].text(
+        #         v - offset if is_max else v + offset,
+        #         i,
+        #         str(v),
+        #         va="center",
+        #         ha="right" if is_max else "left",
+        #         color="1" if is_max else "0",
+        #     )
+        # axes[2].set_box_aspect(1)
+        # axes[2].set_xticks([])
+        # if dataset_idx == 0:
+        #     axes[2].set_title("No. Atoms", fontsize=12)
+        # axes[2].tick_params(labelright=True)
+        # axes[2].set_facecolor("white")
 
         for ax in axes:
             ax.tick_params(color="0.5", right=True)
             for spine in ax.spines.values():
                 spine.set_edgecolor("0.5")
-
     plt.savefig(join(basedir, "attn_weights.pdf"), bbox_inches="tight")
+
+    # plot atom frequencies
+    # print(f"creating atom frequency plot with {len(paths)} datasets")
+    # fig, axes_all = plt.subplots(
+    #     nrows=2,
+    #     ncols=len(paths) + 1,
+    #     sharex=False,
+    #     sharey=True,
+    #     figsize=(2.3 * len(paths), 4),
+    #     gridspec_kw=dict(width_ratios=[0.4, 1, 1, 1], hspace=0.1, wspace=0.1),
+    #     squeeze=False,
+    # )
+
+    # for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all.T[1:])):
 
     if distance_plots:
         for path_idx, path in enumerate(paths):
