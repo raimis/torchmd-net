@@ -376,7 +376,7 @@ def visualize(
         sharex=False,
         sharey=True,
         figsize=(2.8 * len(paths), 4.5),
-        gridspec_kw=dict(width_ratios=[0.2, 1, 1, 1], hspace=0.1, wspace=0.1),
+        gridspec_kw=dict(width_ratios=[0.2] + [1] * len(paths), hspace=0.1, wspace=0.1),
         squeeze=False,
     )
 
