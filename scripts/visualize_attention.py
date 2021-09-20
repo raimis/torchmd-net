@@ -11,6 +11,10 @@ from moleculekit.vmdviewer import getCurrentViewer
 from PIL import Image
 
 
+rotations = {2: [0, 110, 0]}
+zooms = {2: 1.85}
+
+
 # fmt: off
 parser = argparse.ArgumentParser(description='Visualize Attention Weights')
 parser.add_argument('--molecule-idx', type=int, default=0, help='Index of the molecule to visualize')
@@ -41,7 +45,7 @@ except IndexError:
     dataset_arg = ""
 data = dataset(args.dataset_path, dataset_arg=dataset_arg)
 
-if path.exists(args.splits_path):
+if args.splits_path is not None and path.exists(args.splits_path):
     splits = np.load(args.splits_path)
     data = torch.utils.data.Subset(data, splits["idx_test"])
     print(f"found {len(data)} samples in the test set")
@@ -123,7 +127,16 @@ vmd.send("mol representation VDW 0.125 12")
 vmd.send("mol selection all")
 vmd.send("mol material AOChalky")
 vmd.send("mol addrep top")
-vmd.send(f"scale by {args.zoom}")
+
+if args.molecule_idx in zooms:
+    vmd.send(f"scale by {zooms[args.molecule_idx]}")
+else:
+    vmd.send(f"scale by {args.zoom}")
+
+if args.molecule_idx in rotations:
+    vmd.send(f"rotate x by {rotations[args.molecule_idx][0]}")
+    vmd.send(f"rotate y by {rotations[args.molecule_idx][1]}")
+    vmd.send(f"rotate z by {rotations[args.molecule_idx][2]}")
 
 if args.render:
     img_name = f"{args.dataset_name}-{args.molecule_idx}.png"
