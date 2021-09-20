@@ -311,9 +311,10 @@ def visualize(
         and basename(dirname(dirname(path))) != "ignore"
     ]
 
-    dataset_paths = dict()
+    # combine path names
     if combine_dataset:
         print("combining datasets")
+        dataset_paths = dict()
         for path in paths:
             dset_name = basename(dirname(path)).split("-")[0]
             if dset_name in dataset_paths:
@@ -322,6 +323,49 @@ def visualize(
                 dataset_paths[dset_name] = [path]
         paths = dataset_paths
 
+    # load data
+    atoms_per_elem_all = dict()
+    probs_ref_all = dict()
+    weights_all = dict()
+    for path in paths:
+        if combine_dataset:
+            weights_counts = torch.zeros(len(num2elem), len(num2elem), dtype=torch.int)
+            weights = torch.zeros(len(num2elem), len(num2elem))
+            probs_ref_counts = weights_counts.clone()
+            probs_ref = weights.clone()
+            atoms_per_elem = dict()
+            for p in tqdm(paths[path], desc=f"combining data for {path}"):
+                with open(p, "rb") as f:
+                    zs, _weights, _, _probs_ref, _atoms_per_elem, _, _, _ = pickle.load(
+                        f
+                    )
+                weights_counts += (~_weights.isnan()).int()
+                weights += _weights.nan_to_num()
+                probs_ref_counts += (~_probs_ref.isnan()).int()
+                probs_ref += _probs_ref.nan_to_num()
+                for elem in _atoms_per_elem.keys():
+                    if elem in atoms_per_elem:
+                        atoms_per_elem[elem] += _atoms_per_elem[elem]
+                    else:
+                        atoms_per_elem[elem] = _atoms_per_elem[elem]
+            weights /= weights_counts
+            probs_ref /= probs_ref_counts
+        else:
+            with open(path, "rb") as f:
+                zs, weights, _, probs_ref, atoms_per_elem, _, _, _ = pickle.load(f)
+
+            n_elements = len(elements)
+            zs = zs[:n_elements]
+            weights = weights[:n_elements, :n_elements]
+            probs_ref = probs_ref[:n_elements, :n_elements]
+            atoms_per_elem = {
+                k: v for k, v in atoms_per_elem.items() if k in num2elem.keys()
+            }
+        # store data extracted from all datasets
+        atoms_per_elem_all[path] = atoms_per_elem
+        probs_ref_all[path] = probs_ref
+        weights_all[path] = weights
+
     # plot attention weights
     print(f"creating attention plot with {len(paths)} datasets")
     fig, axes_all = plt.subplots(
@@ -329,8 +373,8 @@ def visualize(
         ncols=len(paths) + 1,
         sharex=False,
         sharey=True,
-        figsize=(2.3 * len(paths), 4),
-        gridspec_kw=dict(width_ratios=[0.4, 1, 1, 1], hspace=0.1, wspace=0.1),
+        figsize=(2.8 * len(paths), 4.5),
+        gridspec_kw=dict(width_ratios=[0.2, 1, 1, 1], hspace=0.1, wspace=0.1),
         squeeze=False,
     )
 
@@ -375,43 +419,8 @@ def visualize(
 
         elements = num2elem.values()
 
-        # load data
-        if combine_dataset:
-            weights_counts = torch.zeros(len(num2elem), len(num2elem), dtype=torch.int)
-            weights = torch.zeros(len(num2elem), len(num2elem))
-            probs_ref_counts = weights_counts.clone()
-            probs_ref = weights.clone()
-            atoms_per_elem = dict()
-            for p in tqdm(paths[path], desc=f"combining data for {path}"):
-                with open(p, "rb") as f:
-                    zs, _weights, _, _probs_ref, _atoms_per_elem, _, _, _ = pickle.load(
-                        f
-                    )
-                weights_counts += (~_weights.isnan()).int()
-                weights += _weights.nan_to_num()
-                probs_ref_counts += (~_probs_ref.isnan()).int()
-                probs_ref += _probs_ref.nan_to_num()
-                for elem in _atoms_per_elem.keys():
-                    if elem in atoms_per_elem:
-                        atoms_per_elem[elem] += _atoms_per_elem[elem]
-                    else:
-                        atoms_per_elem[elem] = _atoms_per_elem[elem]
-            weights /= weights_counts
-            probs_ref /= probs_ref_counts
-        else:
-            with open(path, "rb") as f:
-                zs, weights, _, probs_ref, atoms_per_elem, _, _, _ = pickle.load(f)
-
-            n_elements = len(elements)
-            zs = zs[:n_elements]
-            weights = weights[:n_elements, :n_elements]
-            probs_ref = probs_ref[:n_elements, :n_elements]
-            atoms_per_elem = {
-                k: v for k, v in atoms_per_elem.items() if k in num2elem.keys()
-            }
-
         # subplot 0
-        axes[0].imshow(probs_ref, cmap="Reds", vmin=0, vmax=1)
+        axes[0].imshow(probs_ref_all[path], cmap="Reds", vmin=0, vmax=1)
         axes[0].set(
             xticks=range(len(elements)),
             yticks=range(len(elements)),
@@ -420,18 +429,21 @@ def visualize(
         )
         axes[0].tick_params(labeltop=True, labelbottom=False)
         if dataset_idx == 0:
-            axes[0].set_ylabel("$z_i$", fontsize=15)
+            axes[0].set_ylabel(
+                "$z_i$", fontsize=15, rotation=0, ha="right", va="center"
+            )
             axes[0].tick_params(labelleft=True)
         if dataset_idx == len(paths) - 1:
             axes[0].tick_params(labelright=True)
 
         # subplot 1
         if normalize_attention:
-            mask = ~weights.isnan().all(dim=1)
-            weights[mask] = (
-                weights[mask] / weights[mask].nansum(dim=1, keepdim=True).abs()
+            mask = ~weights_all[path].isnan().all(dim=1)
+            weights_all[path][mask] = (
+                weights_all[path][mask]
+                / weights_all[path][mask].nansum(dim=1, keepdim=True).abs()
             )
-        axes[1].imshow(weights, cmap="Blues")
+        axes[1].imshow(weights_all[path], cmap="Blues")
         axes[1].set(
             xticks=range(len(elements)),
             yticks=range(len(elements)),
@@ -441,31 +453,11 @@ def visualize(
         axes[1].set_xlabel("$z_j$", fontsize=15)
         if dataset_idx == 0:
             axes[1].tick_params(labelleft=True, top=True)
-            axes[1].set_ylabel("$z_i$", fontsize=15)
+            axes[1].set_ylabel(
+                "$z_i$", fontsize=15, rotation=0, ha="right", va="center"
+            )
         if dataset_idx == len(paths) - 1:
             axes[1].tick_params(labelright=True)
-
-        # # subplot 2
-        # axes[2].barh(
-        #     range(len(atoms_per_elem.keys())), atoms_per_elem.values(), color="0.6",
-        # )
-        # for i, v in enumerate(atoms_per_elem.values()):
-        #     is_max = v >= max(atoms_per_elem.values()) * 0.70
-        #     offset = max(atoms_per_elem.values()) * 0.025
-        #     axes[2].text(
-        #         v - offset if is_max else v + offset,
-        #         i,
-        #         str(v),
-        #         va="center",
-        #         ha="right" if is_max else "left",
-        #         color="1" if is_max else "0",
-        #     )
-        # axes[2].set_box_aspect(1)
-        # axes[2].set_xticks([])
-        # if dataset_idx == 0:
-        #     axes[2].set_title("No. Atoms", fontsize=12)
-        # axes[2].tick_params(labelright=True)
-        # axes[2].set_facecolor("white")
 
         for ax in axes:
             ax.tick_params(color="0.5", right=True)
@@ -474,19 +466,47 @@ def visualize(
     plt.savefig(join(basedir, "attn_weights.pdf"), bbox_inches="tight")
 
     # plot atom frequencies
-    # print(f"creating atom frequency plot with {len(paths)} datasets")
-    # fig, axes_all = plt.subplots(
-    #     nrows=2,
-    #     ncols=len(paths) + 1,
-    #     sharex=False,
-    #     sharey=True,
-    #     figsize=(2.3 * len(paths), 4),
-    #     gridspec_kw=dict(width_ratios=[0.4, 1, 1, 1], hspace=0.1, wspace=0.1),
-    #     squeeze=False,
-    # )
+    print(f"creating atom frequency plot with {len(paths)} datasets")
+    fig, axes = plt.subplots(
+        nrows=1,
+        ncols=len(paths),
+        sharex=False,
+        sharey=True,
+        figsize=(2.3 * len(paths), 1.7),
+        gridspec_kw=dict(wspace=0.1),
+    )
 
-    # for dataset_idx, (path, axes) in enumerate(zip(paths, axes_all.T[1:])):
+    frequencies = dict()
+    for path, counts in atoms_per_elem_all.items():
+        frequencies[path] = dict()
+        for z, num in counts.items():
+            frequencies[path][z] = num / sum(counts.values()) * 100
 
+    for dataset_idx, (path, ax) in enumerate(zip(paths, axes)):
+        if combine_dataset:
+            dset_name = path
+        else:
+            dset_name = [
+                dset_arg2name[name]
+                if name in dset_arg2name
+                else name[0].upper() + name[1:]
+                for name in path.split(os.sep)[-2].split("-")[:-1]
+            ]
+            dset_name = "\n".join(dset_name)
+
+        ax.bar(
+            range(len(frequencies[path].keys())), frequencies[path].values(),
+        )
+        if dataset_idx == 0:
+            ax.set_ylabel("Atom occurance (%)")
+        ax.set_title(dset2name[dset_name] if dset_name in dset2name else dset_name)
+        # ax.set_box_aspect(1)
+        ax.set(
+            xticks=range(len(elements)), xticklabels=elements,
+        )
+    plt.savefig(join(basedir, "atom_counts.pdf"), bbox_inches="tight")
+
+    # plot attention against distances
     if distance_plots:
         for path_idx, path in enumerate(paths):
             print(f"creating dist-attention plot ({path_idx + 1}/{len(paths)})")
