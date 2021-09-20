@@ -11,8 +11,9 @@ from moleculekit.vmdviewer import getCurrentViewer
 from PIL import Image
 
 
-rotations = {2: [0, 110, 0]}
-zooms = {2: 1.85}
+translations = {8: [0.25, 0, 0]}
+rotations = {2: [0, 110, 0], 8: [30, -35, -30]}
+zooms = {2: 1.85, 8: 1.8}
 
 
 # fmt: off
@@ -138,8 +139,11 @@ if args.molecule_idx in rotations:
     vmd.send(f"rotate y by {rotations[args.molecule_idx][1]}")
     vmd.send(f"rotate z by {rotations[args.molecule_idx][2]}")
 
+if args.molecule_idx in translations:
+    vmd.send(f"translate by {' '.join(map(str, translations[args.molecule_idx]))}")
+
 if args.render:
-    img_name = f"{args.dataset_name}-{args.molecule_idx}.png"
+    img_name = f"{args.dataset_name}-{x.name}.png"
     vmd.send(f"render TachyonLOSPRayInternal {img_name}")
     vmd.close()
 
