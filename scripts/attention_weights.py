@@ -311,6 +311,8 @@ def visualize(
         and basename(dirname(dirname(path))) != "ignore"
     ]
 
+    elements = num2elem.values()
+
     # combine path names
     if combine_dataset:
         print("combining datasets")
@@ -416,8 +418,6 @@ def visualize(
         axes[0].set_title(
             dset2name[dset_name] if dset_name in dset2name else dset_name, fontsize=12,
         )
-
-        elements = num2elem.values()
 
         # subplot 0
         axes[0].imshow(probs_ref_all[path], cmap="Reds", vmin=0, vmax=1)
