@@ -177,7 +177,7 @@ def main():
     
     
     # # Set up simulation
-    T = np.array([300, 350, 450, 600])
+    T = np.array([300, 350, 450, 550])
     R = 8.314462
     e = (R*T)/4184
     betas = 1/e
