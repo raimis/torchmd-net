@@ -12,6 +12,7 @@ import warnings
 
 from .utils import tqdm
 
+from torchmd.run import setup
 
 class Simulation(object):
     """Simulate an artificial trajectory from a CGnet.
@@ -170,14 +171,13 @@ class Simulation(object):
                  save_interval=10, random_seed=None,
                  device=torch.device('cpu'),
                  export_interval=None, log_interval=None,
-                 log_type='write', filename=None, batch_size=10,
-                 test_force_field=False):
+                 log_type='write', filename=None, batch_size=10):
 
         self.initial_coordinates = initial_coordinates
         self.embeddings = embeddings
         
-        if test_force_field == False:
-            model.eval()
+
+        model.eval()
         self.model = model
 
         self.friction = friction
@@ -206,7 +206,6 @@ class Simulation(object):
             )
         self.log_type = log_type
         self.filename = filename
-        self.test_force_field = test_force_field
         # Here, we check to make sure input options for the simulation
         # are acceptable. Note that these checks are separated from
         # the input model checks in _input_model_checks() for ease in
@@ -267,11 +266,9 @@ class Simulation(object):
         if type(self.initial_coordinates) is not torch.Tensor:
             self.initial_coordinates = torch.tensor(self.initial_coordinates)
            
-        if self.test_force_field == False:
-            self._initial_x = self.initial_coordinates.detach().requires_grad_(
+
+        self._initial_x = self.initial_coordinates.detach().requires_grad_(
                 True).to(self.device)
-        else:
-            self._initial_x = self.initial_coordinates.detach().to(self.device)
 
         # set up simulation parameters
         if self.friction is not None:  # langevin
@@ -687,13 +684,10 @@ class Simulation(object):
 
         for t in tqdm(range(self.length), desc='Simulation timestep'):
             # whether to use a test force field
-            if self.test_force_field == False:
-                # produce potential and forces from model
-                potential, forces = self.calculate_potential_and_forces(x_old)
-                potential = potential.detach()
-                forces = forces.detach()
-            else:
-                potential, forces = self.test_force_field(x_old)
+            # produce potential and forces from model
+            potential, forces = self.calculate_potential_and_forces(x_old)
+            potential = potential.detach()
+            forces = forces.detach()
                 
             # step forward in time
             x_new, v_new = self._timestep(x_old, v_old, forces)
@@ -891,7 +885,10 @@ class MultiModelSimulation(Simulation):
 
 
 
-class PTSimulation(object):
+
+    
+    
+class PTSimulation(Simulation):
     """Simulate an artificial trajectory from a CGnet.
 
     If friction and masses are provided, Langevin dynamics are used (see also
@@ -1049,47 +1046,16 @@ class PTSimulation(object):
                  save_interval=10, random_seed=None,
                  device=torch.device('cpu'),
                  export_interval=None, log_interval=None,
-                 log_type='write', filename=None, batch_size=10,
-                 test_force_field=False):
+                 log_type='write', filename=None, batch_size=10):
 
-        if test_force_field == False:
-            model.eval()
-        self.model = model
-
-        self.friction = friction
-        self.masses = masses
-
-        self.save_forces = save_forces
-        self.save_potential = save_potential
-        self.length = length
-        self.save_interval = save_interval
-
-        self.dt = dt
-        self.diffusion = diffusion
-        self.betas = betas
-        self.device = device
-        self.export_interval = export_interval
-        self.log_interval = log_interval
-        self.batch_size = batch_size
-        if log_type not in ['print', 'write']:
-            raise ValueError(
-                "log_type can be either 'print' or 'write'"
-            )
-        self.log_type = log_type
-        self.filename = filename
-        self.test_force_field = test_force_field
-
-        if random_seed is None:
-            self.rng = torch.default_generator
-        else:
-            self.rng = torch.Generator().manual_seed(random_seed)
-        self.random_seed = random_seed
-
-        self._simulated = False
+        Simulation.__init__(self, model, initial_coordinates, embeddings, dt=dt,
+                 beta=betas, friction=friction, masses=masses, diffusion=diffusion,
+                 save_forces=save_forces, save_potential=save_potential, length=length,
+                 save_interval=save_interval, random_seed=random_seed,
+                 device=device,
+                 export_interval=export_interval, log_interval=log_interval,
+                 log_type=log_type, filename=filename, batch_size=batch_size)
         
-        ####################################
-        # additional stuff for PT simulation
-        ####################################
         
         # checking customized inputs
         betas = np.array(betas)
@@ -1220,168 +1186,6 @@ class PTSimulation(object):
     # and some changes in simulate()
     #####################################################    
 
-    def _input_option_checks(self):
-        """Method to catch any problems before starting a simulation:
-        - Make sure the save_interval evenly divides the simulation length
-        - Checks shapes of starting coordinates and embeddings
-        - Ensures masses are provided if friction is not None
-        - Warns if diffusion is specified but won't be used
-        - Checks compatibility of arguments to save and log
-        - Sets up saving parameters for numpy and log files, if relevant
-
-        Notes
-        -----
-        This method is meant to check the acceptability/compatibility of
-        options pertaining to simulation details, saving/output settings,
-        and/or log settings. For checks related to model structures/architectures
-        and input compatibilities (such as using embeddings in models
-        with SchnetFeatures), see the _input_model_checks() method.
-
-        """
-
-        # if there are embeddings, make sure their shape is correct
-        if self.embeddings is not None:
-            if len(self.embeddings.shape) != 2:
-                raise ValueError('embeddings shape must be [frames, beads]')
-
-            if self.initial_coordinates.shape[:2] != self.embeddings.shape:
-                raise ValueError('initial_coordinates and embeddings '
-                                 'must have the same first two dimensions')
-
-        # make sure save interval is a factor of total length
-        if self.length % self.save_interval != 0:
-            raise ValueError(
-                'The save_interval must be a factor of the simulation length'
-            )
-
-
-        # make sure initial coordinates are in the proper format
-        if len(self.initial_coordinates.shape) != 3:
-            raise ValueError(
-                'initial_coordinates shape must be [frames, beads, dimensions]'
-            )
-
-        # set up initial coordinates
-        if type(self.initial_coordinates) is not torch.Tensor:
-            self.initial_coordinates = torch.tensor(self.initial_coordinates)
-
-        if self.test_force_field == False:
-            self._initial_x = self.initial_coordinates.detach().requires_grad_(
-                True).to(self.device)
-        else:
-            self._initial_x = self.initial_coordinates.detach().to(self.device)
-
-        # set up simulation parameters
-        if self.friction is not None:  # langevin
-            if self.masses is None:
-                raise RuntimeError(
-                    'if friction is not None, masses must be given'
-                )
-            if len(self.masses) != self.initial_coordinates.shape[1]:
-                raise ValueError(
-                    'mass list length must be number of CG beads'
-                )
-            self.masses = torch.tensor(self.masses, dtype=torch.float32
-                                       ).to(self.device)
-
-            self.vscale = np.exp(-self.dt * self.friction)
-            self.noisescale = np.sqrt(1 - self.vscale * self.vscale)
-
-            self.kinetic_energies = []
-
-            if self.diffusion != 1:
-                warnings.warn(
-                    "Diffusion other than 1. was provided, but since friction "
-                    "and masses were given, Langevin dynamics will be used "
-                    "which do not incorporate this diffusion parameter"
-                )
-
-        else:  # Brownian dynamics
-            self._dtau = self.diffusion * self.dt
-
-            self.kinetic_energies = None
-
-            if self.masses is not None:
-                warnings.warn(
-                    "Masses were provided, but will not be used since "
-                    "friction is None (i.e., infinte)."
-                )
-
-        # everything below has to do with saving logs/numpys
-
-        # check whether a directory is specified if any saving is done
-        if self.export_interval is not None and self.filename is None:
-            raise RuntimeError(
-                "Must specify filename if export_interval isn't None"
-            )
-        if self.log_interval is not None:
-            if self.log_type == 'write' and self.filename is None:
-                raise RuntimeError(
-                    "Must specify filename if log_interval isn't None and log_type=='write'"
-                )
-
-        # saving numpys
-        if self.export_interval is not None:
-            if self.length // self.export_interval >= 1000:
-                raise ValueError(
-                    "Simulation saving is not implemented if more than 1000 files will be generated"
-                )
-
-            if os.path.isfile("{}_coords_000.npy".format(self.filename)):
-                raise ValueError(
-                    "{} already exists; choose a different filename.".format(
-                        "{}_coords_000.npy".format(self.filename))
-                )
-
-            if self.export_interval is not None:
-                if self.export_interval % self.save_interval != 0:
-                    raise ValueError(
-                        "Numpy saving must occur at a multiple of save_interval"
-                    )
-                self._npy_file_index = 0
-                self._npy_starting_index = 0
-
-        # logging
-        if self.log_interval is not None:
-            if self.log_interval % self.save_interval != 0:
-                raise ValueError(
-                    "Logging must occur at a multiple of save_interval"
-                )
-
-            if self.log_type == 'write':
-                self._log_file = self.filename + '_log.txt'
-
-                if os.path.isfile(self._log_file):
-                    raise ValueError(
-                        "{} already exists; choose a different filename.".format(
-                            self._log_file)
-                    )
-
-    def _set_up_simulation(self, overwrite):
-        """Method to initialize helpful objects for simulation later
-        """
-        if self._simulated and not overwrite:
-            raise RuntimeError('Simulation results are already populated. '
-                               'To rerun, set overwrite=True.')
-
-        self._save_size = int(self.length/self.save_interval)
-
-        self.simulated_coords = torch.zeros((self._save_size, self.n_sims, self.n_beads,
-                                             self.n_dims))
-        if self.save_forces:
-            self.simulated_forces = torch.zeros((self._save_size, self.n_sims,
-                                                 self.n_beads, self.n_dims))
-        else:
-            self.simulated_forces = None
-
-        # the if saved, the simulated potential shape is identified in the first
-        # simulation time point in self._save_timepoint
-        self.simulated_potential = None
-
-        if self.friction is not None:
-            self.kinetic_energies = torch.zeros((self._save_size, self.n_sims))
-        
-        # initial_coodinates -> initial_coordinates for n replicas
         
     def _timestep(self, x_old, v_old, forces):
         """Shell method for routing to either Langevin or overdamped Langevin
@@ -1452,127 +1256,6 @@ class PTSimulation(object):
                  np.sqrt(2*self._dtau/self._betas_for_simulation)*noise)
         return x_new, None
 
-    def _save_timepoint(self, x_new, v_new, forces, potential, t):
-        """Utilities to store saved values of coordinates and, if relevant,
-        also forces, potential, and/or kinetic energy
-
-        Parameters
-        ----------
-        x_new : torch.Tensor
-            current coordinates
-        v_new : None or torch.Tensor
-            current velocities, if Langevin dynamics are used
-        forces: torch.Tensor
-            current forces
-        potential : torch.Tensor
-            current potential
-        t : int
-            Timestep iteration index
-        """
-        save_ind = t // self.save_interval
-
-        self.simulated_coords[save_ind, :, :] = x_new
-        if self.save_forces:
-            self.simulated_forces[save_ind, :, :] = forces
-
-        if self.save_potential:
-            # The potential will look different for different network
-            # structures, so determine its dimensionality at the first
-            # timepoint (as opposed to in self._set_up_simulation)
-            if self.simulated_potential is None:
-                assert potential.shape[0] == self.n_sims
-                potential_dims = ([self._save_size, self.n_sims] +
-                                  [potential.shape[j]
-                                   for j in range(1,
-                                                  len(potential.shape))])
-                self.simulated_potential = torch.zeros((potential_dims))
-
-            self.simulated_potential[t//self.save_interval] = potential
-
-        if v_new is not None:
-            kes = 0.5 * torch.sum(torch.sum(self.masses[:, None]*v_new**2,
-                                            dim=2), dim=1)
-            self.kinetic_energies[save_ind, :] = kes
-
-    def _log_progress(self, iter_):
-        """Utility to print log statement or write it to an text file"""
-        printstring = '{}/{} time points saved ({})'.format(
-            iter_, self.length // self.save_interval, time.asctime())
-
-        if self.log_type == 'print':
-            print(printstring)
-
-        elif self.log_type == 'write':
-            printstring += '\n'
-            file = open(self._log_file, 'a')
-            file.write(printstring)
-            file.close()
-
-    def _get_numpy_count(self):
-        """Returns a string 000-999 for appending to numpy file outputs"""
-        if self._npy_file_index < 10:
-            return '00{}'.format(self._npy_file_index)
-        elif self._npy_file_index < 100:
-            return '0{}'.format(self._npy_file_index)
-        else:
-            return '{}'.format(self._npy_file_index)
-
-    def _save_numpy(self, iter_):
-        """Utility to save numpy arrays"""
-        key = self._get_numpy_count()
-
-        coords_to_export = self.simulated_coords[self._npy_starting_index:iter_]
-        coords_to_export = self._swap_and_export(coords_to_export)
-        np.save("{}_coords_{}.npy".format(
-            self.filename, key), coords_to_export)
-
-        if self.save_forces:
-            forces_to_export = self.simulated_forces[self._npy_starting_index:iter_]
-            forces_to_export = self._swap_and_export(forces_to_export)
-            np.save("{}_forces_{}.npy".format(
-                self.filename, key), forces_to_export)
-
-        if self.save_potential:
-            potentials_to_export = self.simulated_potential[self._npy_starting_index:iter_]
-            potentials_to_export = self._swap_and_export(potentials_to_export)
-            np.save("{}_potential_{}.npy".format(
-                self.filename, key), potentials_to_export)
-
-        if self.friction is not None:
-            kinetic_energies_to_export = self.kinetic_energies[self._npy_starting_index:iter_]
-            kinetic_energies_to_export = self._swap_and_export(
-                kinetic_energies_to_export)
-            np.save("{}_kineticenergy_{}.npy".format(self.filename, key),
-                    kinetic_energies_to_export)
-
-        self._npy_starting_index = iter_
-        self._npy_file_index += 1
-
-    def _swap_and_export(self, data, axis1=0, axis2=1):
-        """Helper method to exchange the zeroth and first axes of tensors that
-        will be output or exported as numpy arrays
-
-        Parameters
-        ----------
-        data : torch.Tensor
-            Tensor to perform the axis swtich upon. Size
-            [n_timesteps, n_simulations, n_beads, n_dims]
-        axis1 : int (default=0)
-            Zero-based index of the first axis to swap
-        axis2 : int (default=1)
-            Zero-based index of the second axis to swap
-
-        Returns
-        -------
-        swapped_data : torch.Tensor
-            Axes-swapped tensor. Size
-            [n_timesteps, n_simulations, n_beads, n_dims]
-        """
-        axes = list(range(len(data.size())))
-        axes[axis1] = axis2
-        axes[axis2] = axis1
-        swapped_data = data.permute(*axes)
-        return swapped_data.cpu().detach().numpy()
 
 
     def calculate_potential_and_forces(self, x_old):
@@ -1700,13 +1383,10 @@ class PTSimulation(object):
 
         for t in tqdm(range(self.length), desc='Simulation timestep'):
             # produce potential and forces from model
-            if self.test_force_field == False:
-                # produce potential and forces from model
-                potential, forces = self.calculate_potential_and_forces(x_old)
-                potential = potential.detach()
-                forces = forces.detach()
-            else:
-                potential, forces = self.test_force_field(x_old)
+            # produce potential and forces from model
+            potential, forces = self.calculate_potential_and_forces(x_old)
+            potential = potential.detach()
+            forces = forces.detach()
 
             # step forward in time
             x_new, v_new = self._timestep(x_old, v_old, forces)
@@ -1730,25 +1410,17 @@ class PTSimulation(object):
             # !!! attempt to exchange !!!
             if (t+1) % self.exchange_interval == 0:
                 # get potentials
-                if self.test_force_field == False:
-                    x_new = x_new.detach().requires_grad_(True).to(self.device)
-                    potential_new, _ = self.calculate_potential_and_forces(x_new)
-                    potential_new = potential_new.detach().cpu().numpy()#[:, 0]
-                    pairs_for_exchange = self._detect_exchange(potential_new)
-                    x_new, v_new = self._perform_exchange(pairs_for_exchange,
-                                                          x_new, v_new)
-                    # for memory efficiency
-                    del potential_new
-                    del _
-                    del pairs_for_exchange
+                x_new = x_new.detach().requires_grad_(True).to(self.device)
+                potential_new, _ = self.calculate_potential_and_forces(x_new)
+                potential_new = potential_new.detach().cpu().numpy()#[:, 0]
+                pairs_for_exchange = self._detect_exchange(potential_new)
+                x_new, v_new = self._perform_exchange(pairs_for_exchange,
+                                                      x_new, v_new)
+                # for memory efficiency
+                del potential_new
+                del _
+                del pairs_for_exchange
 
-                else:
-                    x_new = x_new.detach().to(self.device)
-                    potential_new, _ = self.test_force_field(x_new)
-                    potential_new = potential_new.detach().cpu().numpy()#[:, 0]
-                    pairs_for_exchange = self._detect_exchange(potential_new)
-                    x_new, v_new = self._perform_exchange(pairs_for_exchange,
-                                                          x_new, v_new)
 
             # prepare for next timestep
             x_old = x_new.detach().requires_grad_(True).to(self.device)
@@ -1761,14 +1433,22 @@ class PTSimulation(object):
 
         # if relevant, log that simulation has been completed
         if self.log_interval is not None:
-            printstring = 'Done simulating ({})'.format(time.asctime())
-            if self.log_type == 'print':
-                print(printstring)
-            elif self.log_type == 'write':
-                printstring += '\n'
-                file = open(self._log_file, 'a')
-                file.write(printstring)
-                file.close()
+           attempted = self._replica_exchange_attempts
+           exchanged = self._replica_exchange_approved
+           printstring = 'Done simulating ({})'.format(time.asctime())
+           printstring += "\nReplica-exchange rate: %.2f%% (%d/%d)" % (
+                           exchanged / attempted * 100., exchanged,
+                           attempted)
+           printstring += ("\nNote that you can call .get_replica_info"
+                           "(#replica) to query the inverse temperature"
+                           " and trajectory indices for a given replica.")
+           if self.log_type == 'print':
+               print(printstring)
+           elif self.log_type == 'write':
+               printstring += '\n'
+               file = open(self._log_file, 'a')
+               file.write(printstring)
+               file.close()
 
         # reshape output attributes
         self.simulated_coords = self._swap_and_export(
