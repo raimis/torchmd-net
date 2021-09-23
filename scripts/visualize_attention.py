@@ -1,4 +1,5 @@
 import time
+import os
 from os import path
 import argparse
 import numpy as np
@@ -143,7 +144,7 @@ if args.molecule_idx in translations:
     vmd.send(f"translate by {' '.join(map(str, translations[args.molecule_idx]))}")
 
 if args.render:
-    img_name = f"{args.dataset_name}-{x.name}.png"
+    img_name = f"{path.dirname(args.model_path).split(os.sep)[-1].split('-')[0]}-{x.name}.png"
     vmd.send(f"render TachyonLOSPRayInternal {img_name}")
     vmd.close()
 
