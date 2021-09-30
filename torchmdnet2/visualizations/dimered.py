@@ -43,12 +43,12 @@ def project_tica(features, lag=10, tica=None):
     return dimred_features, tica
 
 def plot_tica(tica, dimred_features):
-    fig, axes = plt.subplots(1, 3, figsize=(12, 3))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
     tica_concatenated = np.concatenate(dimred_features)
     pyemma.plots.plot_feature_histograms(
         tica_concatenated, ['IC {}'.format(i + 1) for i in range(tica.dimension())], ax=axes[0])
-    pyemma.plots.plot_density(*tica_concatenated[:, :2].T, ax=axes[1], cbar=False, logscale=True)
-    pyemma.plots.plot_free_energy(*tica_concatenated[:, :2].T, ax=axes[2], legacy=False)
+    # pyemma.plots.plot_density(*tica_concatenated[:, :2].T, ax=axes[1], cbar=False, logscale=True)
+    pyemma.plots.plot_free_energy(*tica_concatenated[:, :2].T, ax=axes[1], legacy=False)
     for ax in axes.flat[1:]:
         ax.set_xlabel('IC 1')
         ax.set_ylabel('IC 2')

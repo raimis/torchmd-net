@@ -61,7 +61,7 @@ def strides_of(v: torch.Tensor) -> torch.Tensor:
 
 def torch_neighbor_list_no_pbc(data, rcut, self_interaction=True, num_workers=1, max_num_neighbors=1000):
     # assert data.n_atoms.shape[0] == 1, 'data should contain only one structure'
-
+    max_num_neighbors = int(data.n_atoms.max())
     edge_index = radius_graph(data.pos, rcut, batch=data.batch, max_num_neighbors = max_num_neighbors,
                         num_workers=num_workers, flow='target_to_source', loop=self_interaction)
     self_interaction_mask = edge_index[0] != edge_index[1]
