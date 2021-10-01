@@ -14,7 +14,7 @@
 
 
 import sys
-sys.path.insert(0, "../")
+sys.path.insert(0, '../')
 from torchmdnet2.dataset.bba_dataset import BBADataset
 
 
