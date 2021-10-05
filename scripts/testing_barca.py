@@ -1,6 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
-
+#!/bin/bash 
+#SBATCH -J testing_barca_02 
+#SBATCH -D /data/scratch/schreibef98/projects
+#SBATCH -o testing_barca.%j.out 
+#SBATCH --partition=gpu 
+#SBATCH --nodes=1 
+#SBATCH --gres=gpu:4 
+#SBATCH --mem=10000M 
+#SBATCH --time=200:00:00 
+#SBATCH --mail-type=end 
+#SBATCH --mail-user= franz.josef.schreiber@fu-berlin.de
 # In[1]:
 
 
