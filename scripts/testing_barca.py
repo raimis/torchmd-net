@@ -14,8 +14,9 @@ import sys
 
 
 sys.path.insert(0, '../')
-from torchmdnet2.simulation_torchmdnetModels import PTSimulation_
+from torchmdnet2.simulation_torchmdnetModels import Simulation_, PTSimulation_
 from torchmdnet2.dataset.chignolin import ChignolinDataset
+from torchmdnet2.simulation_utils import PT_temps
 
 device = torch.device('cuda')
 
@@ -23,16 +24,16 @@ device = torch.device('cuda')
 # In[3]:
 
 def main():
-    path = '/home/mi/schreibef98/projects/torchmd-net/datasets/chignolin_barca'
+    path = '/home/schreibef98/projects/temp_2'
     args = argparse.Namespace()
     args.conf=None
-    args.coordinates=path+'/chignolin_ca_initial_coords.xtc'
+    args.coordinates=path+'/cln_kcenters_32clusters_coords.xtc'
     args.cutoff=None
     args.device='cuda:0'
     args.extended_system=None
     args.external = {'module': 'torchmdnet.calculators', 'embeddings': [4, 4, 5, 8, 6, 13, 2, 13, 7, 4], 'file': path+'/prot_spec_cln_epoch=23-val_loss=740.5347-test_loss=21.5826.ckpt'}
-    args.forcefield=path+'/chignolin_priors_fulldata.yaml'
-    args.forceterms=['Bonds', 'RepulsionCG']
+    args.forcefield=path+'/ca_priors-dihedrals_general_2xweakers.yaml'
+    args.forceterms=['Bonds', 'RepulsionCG', 'Dihedrals']
     args.langevin_gamma=1
     args.langevin_temperature=350
     args.log_dir='sim_80ep_350K'
@@ -40,7 +41,7 @@ def main():
     args.output='output'
     args.output_period=1000
     args.precision='double'
-    args.replicas=100
+    args.replicas=32
     args.rfa=False
     args.save_period=1000
     args.seed=1
@@ -49,19 +50,19 @@ def main():
     args.switch_dist=None
     args.temperature = 350
     args.timestep=1
-    args.topology= path+'/chignolin_ca_top.psf'
+    args.topology= path+'/cln_ca_top_dih.psf'
     
     
     # In[4]:
     
     
-    chignolin_dataset = ChignolinDataset('/home/mi/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
+    chignolin_dataset = ChignolinDataset('/home/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
     
     
     # In[5]:
     
-    
-    T = np.array([350, 406, 473, 550])
+    T = PT_temps(350, 500, 4)
+    #T = 350
     R = 8.314462
     e = (R*T)/4184
     betas = 1/e
@@ -70,7 +71,7 @@ def main():
     # In[6]:
     
     
-    n_sims = 25-1
+    n_sims = 8-1
     n_timesteps = 1000000
     save_interval = 20
     exchange_interval = 2000
@@ -86,19 +87,24 @@ def main():
     
     sim_embeddings = torch.cat([init[i].z.reshape((1,-1)) for i in range(len(init))], dim=0).to(device=device)
     
+    # overwrite initial coords for this simulation
+    initial_coords = np.load(path + '/initial_coords_cgl.npy')
+    initial_coords = torch.from_numpy(initial_coords)
+    initial_coords.requires_grad_()
     
     # In[8]:
     
     
     # mass_scale = 418.4
     masses = list(12*np.ones(10))
-    dt = 0.1023
+    dt = 0.02045482949774598 * 10
+    friction = 0.04888821
     
     sim = PTSimulation_(args, initial_coords, sim_embeddings, length=n_timesteps,
                      save_interval=save_interval, betas=betas,
                      save_potential=True, device=device, dt=dt, exchange_interval=exchange_interval,
-                     log_interval=10000, log_type='write', filename='/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_chignolin/logs_3',
-                     masses=masses, friction=1.0)
+                     log_interval=10000, log_type='write', filename='/home/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_chignolin/logs_8',
+                     masses=masses, friction=friction)
     
     
     # In[ ]:
@@ -110,7 +116,7 @@ def main():
     # In[ ]:
     
     
-    torch.save(traj, '/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_chignolin/traj_3.pt')
+    torch.save(traj, '/home/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_chignolin/traj_8.pt')
 
 
 # In[ ]:
