@@ -7,7 +7,7 @@
 #SBATCH --partition=gpu 
 #SBATCH --nodes=1 
 #SBATCH --gres=gpu:4 
-#SBATCH --mem=10000M 
+#SBATCH --mem=2000M 
 #SBATCH --time=200:00:00 
 #SBATCH --mail-type=end 
 #SBATCH --mail-user= franz.josef.schreiber@fu-berlin.de
