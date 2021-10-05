@@ -6,7 +6,7 @@
 #SBATCH -o testing_barca.%j.out 
 #SBATCH --partition=gpu 
 #SBATCH --nodes=1 
-#SBATCH --gres=gpu:4 
+#SBATCH --gres=gpu:2 
 #SBATCH --mem=2000M 
 #SBATCH --time=200:00:00 
 #SBATCH --mail-type=end 
