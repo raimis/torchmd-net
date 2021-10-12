@@ -19,6 +19,7 @@ from .utils import tqdm
 from .simulation import Simulation, PTSimulation
 
 from torchmd.run import setup
+from torchmd.wrapper import Wrapper
 
 
 
@@ -181,7 +182,8 @@ class Simulation_(Simulation):
                  log_type='write', filename=None, batch_size=10):
         
         self.args = args
-        _, self.system, self.forces = setup(self.args)
+        self.mol, self.system, self.forces = setup(self.args)
+        self.wrapper = Wrapper(self.mol.numAtoms, self.mol.bonds if len(self.mol.bonds) else None, device)
 
         self.initial_coordinates = initial_coordinates
         self.embeddings = embeddings
@@ -255,7 +257,8 @@ class PTSimulation_(PTSimulation):
                  test_force_field=False):
 
         self.args = args
-        _, self.system, self.forces = setup(self.args)
+        self.mol, self.system, self.forces = setup(self.args)
+        self.wrapper = Wrapper(self.mol.numAtoms, self.mol.bonds if len(self.mol.bonds) else None, device)
         
         self.friction = friction
         self.masses = masses

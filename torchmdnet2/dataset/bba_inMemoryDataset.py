@@ -55,7 +55,8 @@ class BBADataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return ['bba.pt', 'bba.pdb', 'bba_before_baseline.pt']
+        #return ['bba.pt', 'bba.pdb', 'bba_before_baseline.pt']
+        return ['bba.pt', 'bba.pdb']
 
     @staticmethod
     def get_cg_mapping(topology):
@@ -156,12 +157,14 @@ class BBADataset(InMemoryDataset):
         try:
             coord_dir = join(self.raw_dir, 'coords_nowater')
             force_dir = join(self.raw_dir, 'forces_nowater')
+            coord_fns, forces_fns = self.get_data_filenames(coord_dir, force_dir)
         except:
             for fn in self.raw_paths:
                 extract_tar(fn, self.raw_dir, mode='r:gz')
             coord_dir = join(self.raw_dir, 'coords_nowater')
             force_dir = join(self.raw_dir, 'forces_nowater')
-
+        
+            
         topology_fn = join(self.raw_dir,'bba_50ns_0/structure.pdb')
         traj = mdtraj.load(topology_fn).remove_solvent()
         traj.save(self.processed_paths[1])
@@ -199,13 +202,16 @@ class BBADataset(InMemoryDataset):
                     data = self.pre_transform(data)
                 data_list.append(data)
                 ii_frame += 1
+            if i_traj >= 1000:
+                break
         print("checkpoint a")
+        random.seed(123)
         datas, slices = self.collate(data_list)
-        datas_baseline, slices_baseline = self.collate(random.sample(data_list, 1000000))
+        #datas_baseline, slices_baseline = self.collate(random.sample(data_list, 1000000))
         print("checkpoint b")
-        baseline_model = self.get_baseline_model(datas_baseline, n_beads)
+        #baseline_model = self.get_baseline_model(datas, n_beads)
         print("checkpoint c")
         # here is where it fails at the moment
-        self._remove_baseline_forces(datas, slices, baseline_model)
+        #self._remove_baseline_forces(datas, slices, baseline_model)
         print("checkpoint d")
         torch.save((datas, slices), self.processed_paths[0])

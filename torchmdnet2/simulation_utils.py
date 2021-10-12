@@ -37,3 +37,6 @@ def PT_temps(T_min, T_max, n):
     assert np.allclose(inv_spacing - inv_spacing[0], np.zeros_like(inv_spacing)),\
         "no equidistant spacing of 1/T"
     return T
+
+
+
