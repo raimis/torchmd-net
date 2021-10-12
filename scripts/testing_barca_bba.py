@@ -33,20 +33,22 @@ device = torch.device('cuda')
 # In[3]:
 
 def main():
-    path = '/home/mi/schreibef98/projects/torchmd-net/datasets/bba/'
+    #path = '/home/mi/schreibef98/projects/torchmd-net/datasets/bba/'
+    path = '/home/schreibef98/projects/torchmd-net/datasets/bba/'
     args = argparse.Namespace()
     args.coordinates=path+'/bba_zero_traj_no_box_n_replicas_20.xtc'
     args.cutoff=None
     #args.device='cuda:0'
     args.device='cuda'
     args.extended_system=None
-    args.external = {'module': 'torchmdnet.calculators', 'embeddings': [6, 10, 4, 13, 1, 20, 4, 20, 2 ,19, 13, 3, 19, 9, 6, 20, 6, 21, 19, 5, 3, 22, 6, 20, 3, 20, 2, 19], 'file': '/home/mi/schreibef98/projects/torchmd-net/models/prot_spec_bba_epoch=63-val_loss=736.2164-test_loss=21.5246.ckpt'}
+    args.external = {'module': 'torchmdnet.calculators', 'embeddings': [6, 10, 4, 13, 1, 20, 4, 20, 2 ,19, 13, 3, 19, 9, 6, 20, 6, 21, 19, 5, 3, 22, 6, 20, 3, 20, 2, 19], 'file': '/home/schreibef98/projects/torchmd-net/models/prot_spec_bba_epoch=63-val_loss=736.2164-test_loss=21.5246.ckpt'}
     args.forcefield=path+'/ca_priors-dihedrals_general_2xweaker.yaml'
     args.forceterms=['Bonds', 'RepulsionCG', 'Dihedrals']
     args.exclusions = ('bonds')
     args.langevin_gamma=1
     args.langevin_temperature=350
-    args.log_dir='/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/'
+    #args.log_dir='/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/'
+    args.log_dir='/home/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/'
     args.minimize=None
     args.output='output'
     args.output_period=1000
@@ -66,8 +68,8 @@ def main():
     # In[4]:
     
     
-    bba_dataset = BBADataset('/home/mi/schreibef98/projects/torchmd-net/datasets/bba/')
-    
+    #bba_dataset = BBADataset('/home/mi/schreibef98/projects/torchmd-net/datasets/bba/')
+    bba_dataset = BBADataset('/home/schreibef98/projects/torchmd-net/datasets/bba/')
     
     # In[5]:
     
@@ -117,13 +119,13 @@ def main():
     sim = PTSimulation_(args, initial_coords, sim_embeddings, length=n_timesteps,
                      save_interval=save_interval, betas=betas,
                      save_potential=True, device=device, dt=dt, exchange_interval=exchange_interval,
-                     log_interval=10000, log_type='write', filename='/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/logs_01',
+                     log_interval=10000, log_type='write', filename='/home/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/bba_03',
                      masses=masses, friction=friction, export_interval=export_interval)
     """
     sim = Simulation_(args, initial_coords, sim_embeddings, length=n_timesteps,
                      save_interval=save_interval, beta=betas,
                      save_potential=True, device=device, dt=dt,
-                     log_interval=10000, log_type='write', filename='/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/logs_01',
+                     log_interval=10000, log_type='write', filename='/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/bba_03',
                      masses=masses, friction=friction)
     """
     # In[ ]:
@@ -135,7 +137,7 @@ def main():
     # In[ ]:
     
     
-    torch.save(traj, '/home/mi/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/logs_01.pt')
+    torch.save(traj, '/home/schreibef98/projects/torchmd-net/datasets/trajectories/test_barca_bba/traj_03.pt')
 
 
 # In[ ]:
