@@ -183,7 +183,7 @@ class Simulation_(Simulation):
         
         self.args = args
         self.mol, self.system, self.forces = setup(self.args)
-        self.wrapper = Wrapper(self.mol.numAtoms, self.mol.bonds if len(self.mol.bonds) else None, device)
+        #self.wrapper = Wrapper(self.mol.numAtoms, self.mol.bonds if len(self.mol.bonds) else None, device)
 
         self.initial_coordinates = initial_coordinates
         self.embeddings = embeddings
@@ -258,7 +258,7 @@ class PTSimulation_(PTSimulation):
 
         self.args = args
         self.mol, self.system, self.forces = setup(self.args)
-        self.wrapper = Wrapper(self.mol.numAtoms, self.mol.bonds if len(self.mol.bonds) else None, device)
+        #self.wrapper = Wrapper(self.mol.numAtoms, self.mol.bonds if len(self.mol.bonds) else None, device)
         
         self.friction = friction
         self.masses = masses
