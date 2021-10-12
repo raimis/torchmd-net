@@ -5,7 +5,7 @@
 #SBATCH -D /data/scratch/schreibef98/projects
 #SBATCH -o testing_barca_03.%j.out 
 #SBATCH --partition=gpu 
-#SBATCH --nodes=1:ppn=24
+#SBATCH --nodes=1
 #SBATCH --mem=8000M 
 #SBATCH --time=19:00:00 
 #SBATCH --mail-type=end 
