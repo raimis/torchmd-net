@@ -1,24 +1,22 @@
 #!/usr/bin/env python
 # coding: utf-8
 #!/bin/bash 
-#SBATCH -J testing_barca_03 
+#SBATCH -J nequip_cgl_06 
 #SBATCH -D /data/scratch/schreibef98/projects
-#SBATCH -o testing_barca_03.%j.out 
+#SBATCH -o nequip_cgl_06.%j.out 
 #SBATCH --partition=gpu 
 #SBATCH --gres=gpu:4
 #SBATCH --nodes=1
-#SBATCH --mem=32000M 
-#SBATCH --time=200:00:00 
+#SBATCH --mem=32000M
+#SBATCH --time=200:00:00
 #SBATCH --mail-type=end 
-#SBATCH --mail-user= franz.josef.schreiber@fu-berlin.de
+#SBATCH --mail-user=franz.josef.schreiber@fu-berlin.de
 
 import sys, os
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from os.path import join
-import os
 import yaml
 from copy import deepcopy
 
@@ -53,14 +51,9 @@ from nequip.utils.test import assert_AtomicData_equivariant, set_irreps_debug
 
 from torchmdnet2.models.nequip import PLModel, DataModule
 
-import ase
-from ase.io import read, write
-from ase.visualize import view
-from ase.calculators.singlepoint import SinglePointCalculator
-
 from tqdm import tqdm
 
-workdir = '/home/mi/schreibef98/projects/torchmd-net/models/nequip_cgl_01'
+workdir = '/home/schreibef98/projects/torchmd-net/models/nequip_cgl_06'
 
 config_fn = join(workdir,'config.yaml')
 
@@ -68,7 +61,7 @@ config_fn = join(workdir,'config.yaml')
 checkpoint_fn = None
 
 if __name__ == '__main__':
-    cgl_dataset = ChignolinDataset('/home/mi/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
+    cgl_dataset = ChignolinDataset('/home/schreibef98/projects/torchmd-net/datasets/chignolin_AA/')
 
     with open(config_fn, 'r') as f:
         config = yaml.safe_load(f)
@@ -83,22 +76,12 @@ if __name__ == '__main__':
         model = ForceModel(**config['model'])
         plmodel = PLModel(model, **config['optimizer'])
     
-
-    data_path = '/home/mi/schreibef98/projects/torchmd-net/datasets/chignolin_AA/processed/chignolin_nequip_rmax_12_part{}.pt'
-    if os.path.isfile(data_path.format(0)):
-        data_list = []
-        for i in range(7):
-            print('load file',i)
-            data_list += list(torch.load(data_path.format(i)))
-        data_list = tuple(data_list)
-    else:
-        data_list = []
-        for i in tqdm(range(len(cgl_dataset))):
-            ff = cgl_dataset[i]
-            data_list.append(AtomicData.from_points(ff['pos'], config['model']['r_max'], \
-                        **{'atomic_numbers' : ff['z'], 'forces' : ff['forces']}))
-        data_list = tuple(data_list)
-    
+    data_list = []
+    # stride 10 because of memory issues
+    for i in tqdm(range(0,len(cgl_dataset),10)):
+        ff = cgl_dataset[i]
+        data_list.append(AtomicData.from_points(ff['pos'], config['model']['r_max'], **{'atomic_numbers' : ff['z'], 'forces' : ff['forces']}))
+    data_list = tuple(data_list)
 
     dm = DataModule(data_list, **config['datamodule'])
 
@@ -123,7 +106,8 @@ if __name__ == '__main__':
     )
 
     trainer = pl.Trainer(
-        accelerator='gpu',
+        accelerator='ddp',
+        plugins=DDPPlugin(find_unused_parameters=False),
         auto_lr_find=False,
         checkpoint_callback=True,
         callbacks=[early_stopping, checkpoint_callback],

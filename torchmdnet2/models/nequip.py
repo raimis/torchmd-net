@@ -1,8 +1,8 @@
 import torch
-
+from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+from torch.autograd import grad
 import pytorch_lightning as pl
 
 import sys, os
@@ -40,7 +40,7 @@ class PLModel(pl.LightningModule):
 
         super(PLModel, self).__init__()
         
-        self.save_hyperparameters()
+        #self.save_hyperparameters()
         self.model = model
         self.losses = None
         self.lr = lr
@@ -96,6 +96,8 @@ class PLModel(pl.LightningModule):
         self.log(f'{stage}_loss', loss, on_step=True, on_epoch=True, sync_dist=True, prog_bar=True)
 
         return loss
+
+
 
 class DataModule(pl.LightningDataModule):
     def __init__(self, dataset,

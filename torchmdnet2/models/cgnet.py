@@ -1,4 +1,7 @@
 from .schnet import SchNet
+from .nequip import PLModel
+from nequip.data import AtomicData
+from nequip.nn._grad_output import GradientOutput
 from torch import nn
 from torch.autograd import grad
 import torch
@@ -46,6 +49,8 @@ class CGnet(nn.Module):
 
         if isinstance(self.model, SchNet):
             energy = self.model(data.z, data.pos, data.batch)
+        elif isinstance(self.model, GradientOutput):
+            energy = self.model(AtomicData.to_AtomicDataDict(data))
         else:
             energy = self.model(data)
 
@@ -57,7 +62,7 @@ class CGnet(nn.Module):
                                     create_graph=False,
                                     retain_graph=False)[0]
         if isinstance(energy, dict):
-            energy, forces = energy['energy'], energy['forces']
+            energy, forces = energy['total_energy'], energy['forces']
             baseline_energy = self.baseline(data.pos, data.idx.shape[0])
             forces += -grad(baseline_energy, data.pos,
                                      grad_outputs=torch.ones_like(baseline_energy),
